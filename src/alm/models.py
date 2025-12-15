@@ -5,6 +5,7 @@ from typing import Optional
 
 from sqlalchemy import JSON
 from sqlmodel import Column, Field, SQLModel
+from pgvector.sqlalchemy import Vector
 from enum import Enum
 
 from pydantic import BaseModel
@@ -86,3 +87,48 @@ class LogEntry(BaseModel):
         if isinstance(v, datetime):
             return v.isoformat()
         return v
+
+
+# RAG Embeddings Model
+class RAGEmbedding(SQLModel, table=True):
+    """
+    Stores RAG embeddings and metadata for knowledge base retrieval.
+
+    This table stores the embeddings generated from knowledge base PDFs,
+    along with the complete error metadata needed for RAG queries.
+    """
+
+    error_id: str = Field(
+        primary_key=True, description="Unique identifier for the error"
+    )
+
+    # Embedding vector (stored using pgvector Vector type)
+    # Note: pgvector extension must be enabled in PostgreSQL
+    # Dimension is 768 for nomic-embed-text-v1.5 model
+    embedding: list[float] = Field(
+        sa_column=Column(Vector(768)),
+        description="Embedding vector (768 dimensions for nomic-embed-text-v1.5)",
+    )
+
+    # Error metadata stored as JSONB for flexibility
+    error_title: Optional[str] = Field(default=None, description="Title of the error")
+    error_metadata: dict = Field(
+        default_factory=dict,
+        description="Complete error metadata including sections (description, symptoms, resolution, code, benefits) and source information",
+        sa_column=Column(JSON),
+    )
+
+    # Model information
+    model_name: str = Field(description="Name of the embedding model used")
+    embedding_dim: int = Field(
+        default=768, description="Dimension of the embedding vector"
+    )
+
+    # Timestamps
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        description="Timestamp when the embedding was created",
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None, description="Timestamp when the embedding was last updated"
+    )

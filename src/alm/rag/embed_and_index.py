@@ -22,6 +22,7 @@ import requests
 from typing import List, Dict, Any, Tuple, Optional
 from collections import defaultdict
 from pathlib import Path
+from datetime import datetime
 
 from langchain_core.documents import Document
 import faiss
@@ -233,6 +234,8 @@ class AnsibleErrorEmbedder:
 
         self.index = None
         self.error_store = {}
+        self.index_to_error_id = {}
+        self._embeddings_array = None  # Store embeddings for PostgreSQL saving
 
         logger.info("Embedder initialized")
         logger.info("  Mode: TEI Service")
@@ -423,6 +426,9 @@ class AnsibleErrorEmbedder:
         logger.info("STEP:CREATING FAISS INDEX")
         logger.info("=" * 60)
 
+        # Store embeddings array for PostgreSQL saving
+        self._embeddings_array = embeddings.copy()
+
         # Verify embeddings are normalized
         norms = np.linalg.norm(embeddings, axis=1)
         logger.info(
@@ -484,6 +490,112 @@ class AnsibleErrorEmbedder:
         logger.info("  Metadata size: %.2f MB", metadata_size_mb)
         logger.info("  Total storage: %.2f MB", index_size_mb + metadata_size_mb)
 
+    async def save_to_postgresql(self):
+        """
+        Save embeddings and metadata to PostgreSQL.
+
+        This method saves the current FAISS index data (embeddings, error_store)
+        to the PostgreSQL database for use by the RAG service.
+        """
+        if self.index is None:
+            raise ValueError("FAISS index must be built before saving to PostgreSQL")
+
+        if not self.error_store:
+            raise ValueError(
+                "Error store must be populated before saving to PostgreSQL"
+            )
+
+        logger.info("=" * 60)
+        logger.info("SAVING EMBEDDINGS TO POSTGRESQL")
+        logger.info("=" * 60)
+
+        from alm.database import get_session
+        from alm.models import RAGEmbedding
+
+        # Get embeddings from FAISS index
+        # FAISS doesn't have a direct "get all vectors" method, so we need to reconstruct
+        # We'll use the index_to_error_id mapping and error_store to get the data
+        # Actually, we need to store embeddings separately or reconstruct from error_store
+        # For now, let's assume we have the embeddings array from build_faiss_index
+
+        # Since we don't have direct access to the embeddings array after it's added to FAISS,
+        # we need to either:
+        # 1. Store embeddings in memory during build_faiss_index
+        # 2. Re-embed from error_store (inefficient)
+        # 3. Store embeddings before adding to FAISS
+
+        # For now, we'll need to modify build_faiss_index to keep embeddings
+        # Let's add a property to store them
+        if not hasattr(self, "_embeddings_array") or self._embeddings_array is None:
+            logger.warning("Embeddings array not available, cannot save to PostgreSQL")
+            logger.warning(
+                "This method should be called immediately after build_faiss_index"
+            )
+            return
+
+        embeddings_array = self._embeddings_array
+        error_ids = list(self.index_to_error_id.values())
+
+        logger.info("Saving %d embeddings to PostgreSQL...", len(error_ids))
+
+        async with get_session() as session:
+            saved_count = 0
+            updated_count = 0
+
+            for idx, error_id in enumerate(error_ids):
+                embedding_vector = embeddings_array[
+                    idx
+                ].tolist()  # Convert numpy to list
+                error_data = self.error_store[error_id]
+
+                # Prepare error metadata
+                error_metadata = {
+                    "sections": error_data.get("sections", {}),
+                    "metadata": error_data.get("metadata", {}),
+                }
+
+                # Check if embedding already exists
+                from sqlmodel import select
+
+                result = await session.exec(
+                    select(RAGEmbedding).where(RAGEmbedding.error_id == error_id)
+                )
+                existing = result.first()
+
+                if existing:
+                    # Update existing
+                    existing.embedding = embedding_vector
+                    existing.error_title = error_data.get("error_title")
+                    existing.error_metadata = error_metadata
+                    existing.updated_at = datetime.now()
+                    session.add(existing)
+                    updated_count += 1
+                else:
+                    # Create new
+                    rag_embedding = RAGEmbedding(
+                        error_id=error_id,
+                        embedding=embedding_vector,
+                        error_title=error_data.get("error_title"),
+                        error_metadata=error_metadata,
+                        model_name=self.model_name,
+                        embedding_dim=self.embedding_dim,
+                    )
+                    session.add(rag_embedding)
+                    saved_count += 1
+
+                if (saved_count + updated_count) % 100 == 0:
+                    logger.info(
+                        "  Progress: %d embeddings processed",
+                        saved_count + updated_count,
+                    )
+
+            await session.commit()
+
+            logger.info("✓ Embeddings saved to PostgreSQL")
+            logger.info("  New embeddings: %d", saved_count)
+            logger.info("  Updated embeddings: %d", updated_count)
+            logger.info("  Total: %d", saved_count + updated_count)
+
     def load_index(self):
         """Load FAISS index and metadata from disk."""
         logger.info("=" * 60)
@@ -526,6 +638,25 @@ class AnsibleErrorEmbedder:
 
         logger.info("=" * 70)
         logger.info("INGESTION AND INDEXING COMPLETE")
+        logger.info("=" * 70)
+
+    async def ingest_and_index_to_postgresql(self, chunks: List[Document]):
+        """
+        Complete ingestion and indexing pipeline, saving to PostgreSQL.
+
+        This is the async version that saves to PostgreSQL instead of disk.
+        """
+        logger.info("=" * 70)
+        logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING (PostgreSQL)")
+        logger.info("=" * 70)
+
+        error_store = self.group_chunks_by_error(chunks)
+        embeddings, error_ids = self.create_composite_embeddings(error_store)
+        self.build_faiss_index(embeddings, error_ids, error_store)
+        await self.save_to_postgresql()
+
+        logger.info("=" * 70)
+        logger.info("INGESTION AND INDEXING COMPLETE (PostgreSQL)")
         logger.info("=" * 70)
 
 

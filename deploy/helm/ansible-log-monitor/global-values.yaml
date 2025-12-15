@@ -36,3 +36,4 @@ global:
     clustering: "alm-clustering"
     ui: "alm-ui"
     embedding: "alm-embedding"
+    rag: "alm-rag"
