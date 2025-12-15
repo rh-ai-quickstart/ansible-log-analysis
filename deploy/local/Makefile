@@ -191,8 +191,7 @@ stop-aap-mock: ## 🛑 Stop AAP Mock
 	@echo "   ✓ AAP Mock stopped"
 
 stop-embedding: ## 🛑 Stop Embedding Service
-	@$(COMPOSE_CMD) -f compose.yaml stop alm-embedding || true
-	@$(COMPOSE_CMD) -f compose.yaml rm -f alm-embedding || true
+	@$(COMPOSE_CMD) -f compose.yaml down alm-embedding || true
 	@echo "   ✓ Embedding service stopped"
 
 kill-ports: ## 🔌 Kill processes using required ports
