@@ -9,22 +9,104 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-# Collect logs from aap-mock container (via Docker socket)
-# This mirrors the OpenShift setup where Alloy collects from aap-mock pods
-- job_name: aap-mock
-  docker_sd_configs:
-    - host: unix:///var/run/docker.sock
-      refresh_interval: 5s
-      filters:
-        - name: name
-          values: ["aap-mock"]
-  relabel_configs:
-    - source_labels: ['__meta_docker_container_name']
-      regex: '/(.*)'
-      target_label: 'container'
-    - source_labels: ['__meta_docker_container_log_stream']
-      target_label: 'logstream'
-    - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
-      target_label: 'service'
-    - replacement: 'aap-mock'
-      target_label: 'job'
+
+# TODO: Uncomment this when we have a way to collect logs from aap-mock container (work in progress)
+# # Collect logs from aap-mock container (via Docker socket)
+# # This mirrors the OpenShift setup where Alloy collects from aap-mock pods
+# - job_name: aap-mock
+#   docker_sd_configs:
+#     - host: unix:///var/run/docker.sock
+#       refresh_interval: 5s
+#       filters:
+#         - name: name
+#           values: ["aap-mock"]
+#   relabel_configs:
+#     - source_labels: ['__meta_docker_container_name']
+#       regex: '/(.*)'
+#       target_label: 'container'
+#     - source_labels: ['__meta_docker_container_log_stream']
+#       target_label: 'logstream'
+#     - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+#       target_label: 'service'
+#     - replacement: 'aap-mock'
+#       target_label: 'job'
+
+# Single job for all Ansible logs
+- job_name: ansible_logs
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: ansible_logs
+      __path__: /var/log/ansible_logs/**/*.txt
+
+  pipeline_stages:
+    # Stage 1: Multiline Aggregation
+    - multiline:
+        firstline: '^(PLAY\s+\[|TASK\s+\[|RUNNING HANDLER\s+\[|PLAY\s+RECAP\s+\*+|NO MORE HOSTS LEFT\s+\*+|Vault password)'
+        max_lines: 2000
+
+    # Stage 2: Extract markers for each log type (regex only sets field if it matches)
+    - regex:
+        expression: '^TASK\s+\[(?P<task_name_marker>[^\]]+)\]'
+    - regex:
+        expression: '^PLAY\s+RECAP\s+(?P<recap_marker>\*+)'
+    - regex:
+        expression: '^PLAY\s+\[(?P<play_name_marker>[^\]]+)\]\s+\*+'
+
+    # Stage 3: Extract timestamp from log content (if exists)
+    - regex:
+        expression: '(?P<real_timestamp>\w+ \d{2} \w+ \d{4}  \d{2}:\d{2}:\d{2} [+-]\d{4})'
+
+    # Stage 4: Extract status from TASK entries
+    - regex:
+        expression: '(?P<status>ok|changed|failed|fatal|skipping|included):\s+\[(?P<host>[^\]]+)\]'
+
+    # Stage 5: Promote markers to temporary labels (needed for match selectors)
+    - labels:
+        task_name_marker: ''
+        recap_marker: ''
+        play_name_marker: ''
+
+   # Stage 6: Set log_type based on which marker exists
+    - match:
+        selector: '{task_name_marker!=""}'
+        stages:
+          - static_labels:
+              log_type: 'task'
+
+    - match:
+        selector: '{recap_marker!="",log_type=""}'
+        stages:
+          - static_labels:
+              log_type: 'recap'
+
+    - match:
+        selector: '{play_name_marker!="",log_type=""}'
+        stages:
+          - static_labels:
+              log_type: 'play'
+
+    # Stage 7: Fallback for unmatched entries
+    - match:
+        selector: '{log_type=""}'
+        stages:
+          - static_labels:
+              log_type: 'other'
+
+
+    # Stage 9: Add status as label
+    - labels:
+        status: ''
+
+    # Stage 10: Convert log_type and real_timestamp to structured metadata
+    - structured_metadata:
+        log_type:
+        real_timestamp:
+
+    # Stage 11: Drop ALL temporary labels
+    - labeldrop:
+        - task_name_marker
+        - recap_marker
+        - play_name_marker
+        - log_type

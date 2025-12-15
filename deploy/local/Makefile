@@ -171,28 +171,24 @@ stop: ## 🛑 Stop all services
 	@echo "👋 All services stopped"
 
 stop-postgres: ## 🛑 Stop PostgreSQL database
-	@$(COMPOSE_CMD) -f compose.yaml stop postgres || true
-	@$(COMPOSE_CMD) -f compose.yaml rm -f postgres || true
-	@echo "   ✓ PostgreSQL stopped"
+	@$(COMPOSE_CMD) -f compose.yaml down postgres || true
+	@echo "   ✓ PostgreSQL stopped and removed"
 
 stop-phoenix: ## 🛑 Stop Phoenix
-	@$(COMPOSE_CMD) -f compose.yaml stop phoenix || true
-	@$(COMPOSE_CMD) -f compose.yaml rm -f phoenix || true
-	@echo "   ✓ Phoenix stopped"
+	@$(COMPOSE_CMD) -f compose.yaml down phoenix || true
+	@echo "   ✓ Phoenix stopped and removed"
 
 stop-loki-stack: ## 🛑 Stop Loki stack (Loki, Loki MCP Server, Grafana, Promtail)
-	@$(COMPOSE_CMD) -f compose.yaml stop loki-mcp-server grafana promtail loki || true
-	@$(COMPOSE_CMD) -f compose.yaml rm -f loki-mcp-server grafana promtail loki || true
-	@echo "   ✓ Loki stack stopped"
+	@$(COMPOSE_CMD) -f compose.yaml down loki-mcp-server grafana promtail loki || true
+	@echo "   ✓ Loki stack stopped and removed"
 
 stop-aap-mock: ## 🛑 Stop AAP Mock
-	@$(COMPOSE_CMD) -f compose.yaml stop aap-mock || true
-	@$(COMPOSE_CMD) -f compose.yaml rm -f aap-mock || true
-	@echo "   ✓ AAP Mock stopped"
+	@$(COMPOSE_CMD) -f compose.yaml down aap-mock || true
+	@echo "   ✓ AAP Mock stopped and removed"
 
 stop-embedding: ## 🛑 Stop Embedding Service
 	@$(COMPOSE_CMD) -f compose.yaml down alm-embedding || true
-	@echo "   ✓ Embedding service stopped"
+	@echo "   ✓ Embedding service stopped and removed"
 
 kill-ports: ## 🔌 Kill processes using required ports
 	@if [ "$$(uname)" = "Darwin" ]; then \

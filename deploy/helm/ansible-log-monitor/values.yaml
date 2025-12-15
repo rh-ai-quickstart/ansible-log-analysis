@@ -228,7 +228,20 @@ loki:
 
 alloy:
   fullnameOverride: alloy
+  controller:
+    type: deployment  # Changed from the default DaemonSet to Deployment (only need 1 pod for static file collection)
+    replicas: 1
+    volumes:
+      extra:
+        - name: ansible-logs
+          emptyDir: {}   # Uses emptyDir, logs will be copied via 'oc cp' (see Makefile load-logs-to-alloy)
+
   alloy:
+    # Volume mounts for the Alloy container
+    mounts:
+      extra:
+        - name: ansible-logs
+          mountPath: /var/log/ansible_logs
     configMap:
       # NOTE: This config filters logs to only aap-mock pods.
       # If aap-mock.enabled is set to false, no logs will be collected.
@@ -240,108 +253,200 @@ alloy:
           format = "logfmt"
         }
 
-        // Discover all pods in the cluster
-        discovery.kubernetes "pods" {
-          role = "pod"
+        // TODO: Uncomment this when we have a way to collect logs from aap-mock container (work in progress)
+        // // Discover all pods in the cluster
+        // discovery.kubernetes "pods" {
+        //   role = "pod"
+        // }
+        //
+        // // Relabel discovered targets to add useful labels
+        // // Filtered to only collect logs from aap-mock pods
+        // discovery.relabel "pod_logs" {
+        //   targets = discovery.kubernetes.pods.targets
+        //
+        //   // Filter to only aap-mock pods (using Helm standard label)
+        //   rule {
+        //     source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        //     regex         = "aap-mock"
+        //     action        = "keep"
+        //   }
+        //
+        //   // Add namespace label
+        //   rule {
+        //     source_labels = ["__meta_kubernetes_namespace"]
+        //     action        = "replace"
+        //     target_label  = "namespace"
+        //   }
+        //
+        //   // Add pod name label
+        //   rule {
+        //     source_labels = ["__meta_kubernetes_pod_name"]
+        //     action        = "replace"
+        //     target_label  = "pod"
+        //   }
+        //
+        //   // Add container name label
+        //   rule {
+        //     source_labels = ["__meta_kubernetes_pod_container_name"]
+        //     action        = "replace"
+        //     target_label  = "container"
+        //   }
+        //
+        //   // Add app label if it exists
+        //   rule {
+        //     source_labels = ["__meta_kubernetes_pod_label_app"]
+        //     action        = "replace"
+        //     target_label  = "app"
+        //   }
+        //
+        //   // Add node name label
+        //   rule {
+        //     source_labels = ["__meta_kubernetes_pod_node_name"]
+        //     action        = "replace"
+        //     target_label  = "node"
+        //   }
+        //
+        //   // Optional: Filter specific namespaces (uncomment to use)
+        //   // rule {
+        //   //   source_labels = ["__meta_kubernetes_namespace"]
+        //   //   regex         = "kube-system|kube-public|kube-node-lease"
+        //   //   action        = "drop"
+        //   // }
+        // }
+
+        // // Collect logs from Kubernetes pods using the API
+        // loki.source.kubernetes "pods" {
+        //   targets    = discovery.relabel.pod_logs.output
+        //   forward_to = [loki.process.add_labels.receiver]
+        // }
+
+        // File-based log collection (temporary workaround)
+        // Collects Ansible logs from static file paths
+        // Requires /var/log/ansible_logs to be mounted (see controller.volumes.extra and alloy.mounts.extra above)
+        
+        // Discover log files using glob pattern
+        local.file_match "ansible_logs" {
+          path_targets = [{
+            __address__ = "localhost",
+            __path__    = "/var/log/ansible_logs/**/*.txt",
+          }]
         }
 
-        // Relabel discovered targets to add useful labels
-        // Filtered to only collect logs from aap-mock pods
-        discovery.relabel "pod_logs" {
-          targets = discovery.kubernetes.pods.targets
-
-          // Filter to only aap-mock pods (using Helm standard label)
-          rule {
-            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
-            regex         = "aap-mock"
-            action        = "keep"
-          }
-
-          // Add namespace label
-          rule {
-            source_labels = ["__meta_kubernetes_namespace"]
-            action        = "replace"
-            target_label  = "namespace"
-          }
-
-          // Add pod name label
-          rule {
-            source_labels = ["__meta_kubernetes_pod_name"]
-            action        = "replace"
-            target_label  = "pod"
-          }
-
-          // Add container name label
-          rule {
-            source_labels = ["__meta_kubernetes_pod_container_name"]
-            action        = "replace"
-            target_label  = "container"
-          }
-
-          // Add app label if it exists
-          rule {
-            source_labels = ["__meta_kubernetes_pod_label_app"]
-            action        = "replace"
-            target_label  = "app"
-          }
-
-          // Add node name label
-          rule {
-            source_labels = ["__meta_kubernetes_pod_node_name"]
-            action        = "replace"
-            target_label  = "node"
-          }
-
-          // Optional: Filter specific namespaces (uncomment to use)
-          // rule {
-          //   source_labels = ["__meta_kubernetes_namespace"]
-          //   regex         = "kube-system|kube-public|kube-node-lease"
-          //   action        = "drop"
-          // }
+        // Collect logs from discovered files
+        loki.source.file "ansible_logs" {
+          targets    = local.file_match.ansible_logs.targets
+          forward_to = [loki.process.ansible_pipeline.receiver]
         }
 
-        // Collect logs from Kubernetes pods using the API
-        loki.source.kubernetes "pods" {
-          targets    = discovery.relabel.pod_logs.output
-          forward_to = [loki.process.add_labels.receiver]
-        }
-
-        // Process logs to add additional context or filtering
-        loki.process "add_labels" {
+        // Process Ansible logs with comprehensive pipeline
+        loki.process "ansible_pipeline" {
           forward_to = [loki.write.loki.receiver]
 
-          // Add a cluster label (useful for multi-cluster setups)
-          stage.static_labels {
-            values = {
-              cluster = "openshift-cluster",
-            }
+          // Stage 1: Multiline Aggregation
+          // Combines multi-line Ansible log entries (PLAY, TASK, RECAP, etc.)
+          stage.multiline {
+            firstline     = "^(PLAY\\s+\\[|TASK\\s+\\[|RUNNING HANDLER\\s+\\[|PLAY\\s+RECAP\\s+\\*+|NO MORE HOSTS LEFT\\s+\\*+|Vault password)"
+            max_wait_time = "3s"
+            max_lines     = 2000
           }
 
-          // Drop health check logs (noisy, not useful for analysis)
-          stage.drop {
-            source = ""
-            expression = ".*(GET /readyz|GET /healthz).*"
-            drop_counter_reason = "health_check"
+          // Stage 2: Extract task name marker
+          stage.regex {
+            expression = "^TASK\\s+\\[(?P<task_name_marker>[^\\]]+)\\]"
           }
 
-          // Optional: Drop logs older than 24 hours
-          stage.drop {
-            older_than = "24h"
-            drop_counter_reason = "old_logs"
+          // Stage 3: Extract recap marker
+          stage.regex {
+            expression = "^PLAY\\s+RECAP\\s+(?P<recap_marker>\\*+)"
           }
 
-          // Optional: Extract log level from JSON logs
-          stage.json {
-            expressions = {
-              level = "level",
-            }
+          // Stage 4: Extract play name marker
+          stage.regex {
+            expression = "^PLAY\\s+\\[(?P<play_name_marker>[^\\]]+)\\]\\s+\\*+"
           }
 
-          // Optional: Add log level as a label if extracted
+          // Stage 5: Extract timestamp from log content
+          stage.regex {
+            expression = "(?P<real_timestamp>\\w+ \\d{2} \\w+ \\d{4}  \\d{2}:\\d{2}:\\d{2} [+-]\\d{4})"
+          }
+
+          // Stage 6: Extract status from TASK entries
+          stage.regex {
+            expression = "(?P<status>ok|changed|failed|fatal|skipping|included):\\s+\\[(?P<host>[^\\]]+)\\]"
+          }
+
+          // Stage 7: Promote markers to labels (needed for match selectors)
           stage.labels {
             values = {
-              level = "",
+              task_name_marker = "",
+              recap_marker     = "",
+              play_name_marker = "",
             }
+          }
+
+          // Stage 8: Set log_type = 'task' if task_name_marker exists
+          stage.match {
+            selector = "{task_name_marker!=\"\"}"
+            stage.static_labels {
+              values = {
+                log_type = "task",
+              }
+            }
+          }
+
+          // Stage 9: Set log_type = 'recap' if recap_marker exists and log_type not set
+          stage.match {
+            selector = "{recap_marker!=\"\",log_type=\"\"}"
+            stage.static_labels {
+              values = {
+                log_type = "recap",
+              }
+            }
+          }
+
+          // Stage 10: Set log_type = 'play' if play_name_marker exists and log_type not set
+          stage.match {
+            selector = "{play_name_marker!=\"\",log_type=\"\"}"
+            stage.static_labels {
+              values = {
+                log_type = "play",
+              }
+            }
+          }
+
+          // Stage 11: Fallback for unmatched entries
+          stage.match {
+            selector = "{log_type=\"\"}"
+            stage.static_labels {
+              values = {
+                log_type = "other",
+              }
+            }
+          }
+
+          // Stage 12: Add status as label
+          stage.labels {
+            values = {
+              status = "",
+            }
+          }
+
+          // Stage 13: Convert log_type and real_timestamp to structured metadata
+          stage.structured_metadata {
+            values = {
+              log_type       = "",
+              real_timestamp = "",
+            }
+          }
+
+          // Stage 14: Drop temporary marker labels (cleanup)
+          stage.label_drop {
+            values = [
+              "task_name_marker",
+              "recap_marker",
+              "play_name_marker",
+              "log_type",
+            ]
           }
         }
 
