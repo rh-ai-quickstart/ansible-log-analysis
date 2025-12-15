@@ -4,7 +4,7 @@ replicaCount: 1
 strategy: {}
 
 image:
-  repository: quay.io/rh-ai-quickstart/alm-backend
+  repository: quay.io/rh-ai-quickstart/alm-rag
   pullPolicy: Always
   tag: "tei-rag-v1"
 

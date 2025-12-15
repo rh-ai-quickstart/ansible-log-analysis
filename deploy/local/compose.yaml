@@ -230,7 +230,7 @@ services:
       retries: 3
 
   alm-embedding:
-    image: quay.io/rh-ai-quickstart/alm-backend:tei-rag-v1
+    image: quay.io/rh-ai-quickstart/alm-rag:tei-rag-v1
     container_name: alm-embedding
     # Entrypoint is already set to text-embeddings-router in the image
     ports:
