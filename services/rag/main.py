@@ -99,8 +99,27 @@ async def load_index_background():
                 print(f"✗ Failed to load RAG index: {e}")
                 return  # Don't raise, just return - service will stay in "not ready" state
         except Exception as e:
-            print(f"✗ Failed to load RAG index: {e}")
-            return  # Don't raise, just return - service will stay in "not ready" state
+            # Check if this is a "table doesn't exist" error - continue polling
+            error_str = str(e).lower()
+            if (
+                "does not exist" in error_str
+                or "undefinedtable" in error_str
+                or "relation" in error_str
+            ):
+                # Table doesn't exist yet - init job is still creating it
+                if elapsed == 0 or elapsed % 30 == 0:  # Print every 30 seconds
+                    print(
+                        f"Table not yet created (waited {elapsed}s), retrying in {wait_interval}s..."
+                    )
+                await asyncio.sleep(wait_interval)
+                elapsed += wait_interval
+            else:
+                # Some other error - log and continue polling (might be transient)
+                if elapsed == 0 or elapsed % 30 == 0:  # Print every 30 seconds
+                    print(f"Error loading index (waited {elapsed}s): {e}")
+                    print(f"  Retrying in {wait_interval}s...")
+                await asyncio.sleep(wait_interval)
+                elapsed += wait_interval
 
     # If we get here, we've timed out
     print(f"⚠ WARNING: Failed to load RAG index after {max_wait_time} seconds")
