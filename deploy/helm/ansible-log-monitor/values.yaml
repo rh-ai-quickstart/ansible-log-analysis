@@ -354,6 +354,10 @@ loki:
 
   singleBinary:
     replicas: 3
+    persistence:
+      retentionPolicy:
+        whenDeleted: Delete
+        whenScaled: Delete
 
   # Zero out replica counts of other deployment modes
   backend:
@@ -442,10 +446,11 @@ alloy:
   controller:
     type: deployment  # Changed from the default DaemonSet to Deployment (only need 1 pod for static file collection)
     replicas: 1
-    # volumes: # Commented out to avoid emptyDir mount (logs are now bundled in alloy image as workaround)
-    #   extra:
-    #     - name: ansible-logs
-    #       emptyDir: {}   # Uses emptyDir, logs will be copied via 'oc cp' (see Makefile load-logs-to-alloy)
+    volumes:
+      extra:
+        - name: ansible-logs
+          persistentVolumeClaim:
+            claimName: ansible-logs-pvc
 
   alloy:
     # Commented out to avoid emptyDir mount (logs are now bundled in alloy image as workaround)
@@ -708,6 +713,19 @@ alloy:
         }
   rbac:
     create: true
+
+  # Create PVC for persistent log storage
+  extraObjects:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: ansible-logs-pvc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
 
 # AAP Log Generator (Mock) configuration
 # Generates mock Ansible Automation Platform logs for testing and demonstration
