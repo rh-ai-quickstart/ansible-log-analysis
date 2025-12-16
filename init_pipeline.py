@@ -29,21 +29,21 @@ def setup_data_directories():
     print(f"  ✓ {data_dir}")
     print(f"  ✓ {logs_dir}")
 
-    # Check for knowledge base PDFs in image
-    image_kb_dir = Path("/app/data/knowledge_base")
-    if image_kb_dir.exists():
-        image_pdfs = list(image_kb_dir.glob("*.pdf"))
-        if image_pdfs:
-            print(f"\n✓ Found {len(image_pdfs)} PDF file(s) in container image:")
-            for pdf in image_pdfs:
+    # Check for knowledge base PDFs
+    # Use config path (works for both local and container)
+    kb_dir = Path(config.storage.knowledge_base_dir)
+    if kb_dir.exists():
+        pdfs = list(kb_dir.glob("*.pdf"))
+        if pdfs:
+            print(f"\n✓ Found {len(pdfs)} PDF file(s) in knowledge base ({kb_dir}):")
+            for pdf in pdfs:
                 print(f"  - {pdf.name}")
         else:
-            print(f"\n⚠ No PDF files found in image at {image_kb_dir}")
+            print(f"\n⚠ No PDF files found in {kb_dir}")
+            print("  Add PDF files to the knowledge base directory to enable RAG")
     else:
-        print(f"\n⚠ Knowledge base directory not found in image at {image_kb_dir}")
-        print(
-            "  PDFs should be baked into the container image at /app/data/knowledge_base"
-        )
+        print(f"\n⚠ Knowledge base directory not found at {kb_dir}")
+        print("  Create the directory and add PDF files to enable RAG")
 
     print("=" * 70)
 
@@ -108,13 +108,13 @@ async def build_rag_index():
         parser = AnsibleErrorParser()
         embedder = AnsibleErrorEmbedder()
 
-        # Find PDFs in knowledge base (from container image)
-        # PDFs should be baked into the image at /app/data/knowledge_base
-        image_kb_dir = Path("/app/data/knowledge_base")
-        pdf_files = sorted(glob.glob(str(image_kb_dir / "*.pdf")))
+        # Find PDFs in knowledge base
+        # Use config path (works for both local and container)
+        kb_dir = Path(config.storage.knowledge_base_dir)
+        pdf_files = sorted(glob.glob(str(kb_dir / "*.pdf")))
 
         if not pdf_files:
-            print(f"⚠ WARNING: No PDF files found in {image_kb_dir}")
+            print(f"⚠ WARNING: No PDF files found in {kb_dir}")
             print("  RAG index will not be created")
             return
 
