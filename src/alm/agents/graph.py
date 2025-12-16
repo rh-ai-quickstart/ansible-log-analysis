@@ -12,6 +12,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 from alm.agents.get_more_context_agent.graph import more_context_agent_graph
 
+from alm.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 llm = get_llm()
 
@@ -49,9 +52,16 @@ async def suggest_step_by_step_solution_node(
     log_summary = state.logSummary
     log = state.log_entry.message
     context = state.contextForStepByStepSolution
-    step_by_step_solution = await suggest_step_by_step_solution(
-        log_summary, log, llm, context
-    )
+    try:
+        step_by_step_solution = await suggest_step_by_step_solution(
+            log_summary, log, llm, context
+        )
+    except Exception as e:
+        logger.error("Exception in suggest_step_by_step_solution_node: %s", e)
+        logger.warning("Continuing **without context** due to error.")
+        step_by_step_solution = await suggest_step_by_step_solution(
+            log_summary, log, llm
+        )
     return Command(goto=END, update={"stepByStepSolution": step_by_step_solution})
 
 
