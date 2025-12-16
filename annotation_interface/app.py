@@ -122,7 +122,7 @@ class DataAnnotationApp:
 
     def toggle_cluster_sampling(
         self, show_sample: bool
-    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, str, str]:
+    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, bool, str, str]:
         """Toggle between showing all rows or one sample per cluster."""
         self.show_cluster_sample = show_sample
 
@@ -157,10 +157,11 @@ class DataAnnotationApp:
         feedback: str,
         golden_solution: str = "",
         expected_behavior: str = "",
+        is_context_correct: bool = False,
         need_more_context: bool = False,
         need_more_context_reason: str = "",
     ) -> str:
-        """Save feedback, golden solution, expected behavior, and need more context info for current data entry."""
+        """Save feedback, golden solution, expected behavior, and context info for current data entry."""
         if not self.data:
             return "No data available"
 
@@ -175,6 +176,7 @@ class DataAnnotationApp:
             "feedback": feedback,
             "golden_stepByStepSolution": golden_solution,
             "expected_behavior": expected_behavior,
+            "golden_is_context_correct": is_context_correct,
             "golden_need_more_context": need_more_context,
             "golden_need_more_context_reason": need_more_context_reason,
             "logMessage": current_entry.get("logMessage", "No line context"),
@@ -190,11 +192,12 @@ class DataAnnotationApp:
             f for f in self.feedback_data if f["index"] != self.current_index
         ]
 
-        # Add new feedback if not empty (either feedback, golden_solution, expected_behavior, or need_more_context info)
+        # Add new feedback if not empty (either feedback, golden_solution, expected_behavior, or context info)
         if (
             feedback.strip()
             or golden_solution.strip()
             or expected_behavior.strip()
+            or is_context_correct
             or need_more_context
             or need_more_context_reason.strip()
         ):
@@ -210,7 +213,7 @@ class DataAnnotationApp:
 
     def get_current_entry(
         self,
-    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, str, str]:
+    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, bool, str, str]:
         """Get current data entry for display."""
         if not self.data:
             return (
@@ -223,6 +226,7 @@ class DataAnnotationApp:
                 "",
                 "0 / 0",
                 "",
+                False,
                 False,
                 False,
                 "",
@@ -258,10 +262,11 @@ class DataAnnotationApp:
         # Get need_more_context from DB
         db_need_more_context = entry.get("need_more_context", False)
 
-        # Get existing feedback, golden solution, expected behavior, and need more context info for this entry
+        # Get existing feedback, golden solution, expected behavior, and context info for this entry
         existing_feedback = ""
         existing_golden_solution = ""
         existing_expected_behavior = ""
+        existing_is_context_correct = False
         existing_need_more_context = False
         existing_need_more_context_reason = ""
         for f in self.feedback_data:
@@ -269,6 +274,7 @@ class DataAnnotationApp:
                 existing_feedback = f.get("feedback", "")
                 existing_golden_solution = f.get("golden_stepByStepSolution", "")
                 existing_expected_behavior = f.get("expected_behavior", "")
+                existing_is_context_correct = f.get("golden_is_context_correct", False)
                 existing_need_more_context = f.get("golden_need_more_context", False)
                 existing_need_more_context_reason = f.get(
                     "golden_need_more_context_reason", ""
@@ -293,6 +299,7 @@ class DataAnnotationApp:
             nav_info,
             step_by_step,  # raw text for copying
             db_need_more_context,  # from DB
+            existing_is_context_correct,  # from user annotation
             existing_need_more_context,  # from user annotation
             existing_need_more_context_reason,  # from user annotation
             labels_json,  # labels in JSON format
@@ -300,7 +307,7 @@ class DataAnnotationApp:
 
     def navigate(
         self, direction: int
-    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, str, str]:
+    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, bool, str, str]:
         """Navigate through data entries."""
         if not self.data:
             return self.get_current_entry()
@@ -312,7 +319,7 @@ class DataAnnotationApp:
 
     def go_to_index(
         self, index: int
-    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, str, str]:
+    ) -> Tuple[str, str, str, str, str, str, str, str, str, bool, bool, bool, str, str]:
         """Jump to specific index."""
         if not self.data:
             return self.get_current_entry()
@@ -629,7 +636,7 @@ def create_app():
                     "Feedback & Failure Mode",
                     "Golden Solution",
                     "Expected Behavior",
-                    "Need More Context",
+                    "Context",
                 ],
                 value="Feedback & Failure Mode",
                 label="📝 Human Annotations",
@@ -677,10 +684,15 @@ def create_app():
                     visible=False,
                 )
 
-                # Need More Context tab
+                # Context tab
                 need_more_context_column = gr.Column(visible=False)
                 with need_more_context_column:
-                    gr.Markdown("### 🔍 Need More Context Assessment")
+                    gr.Markdown("### 🔍 Context Assessment")
+                    is_context_correct_toggle = gr.Checkbox(
+                        label="Is the returned context correct?",
+                        value=False,
+                        interactive=True,
+                    )
                     need_more_context_toggle = gr.Checkbox(
                         label="Need More Context",
                         value=False,
@@ -688,7 +700,7 @@ def create_app():
                     )
                     need_more_context_reason = gr.Textbox(
                         label="Explain Why More Context is Needed",
-                        lines=12,
+                        lines=10,
                         placeholder="Explain what additional context or information is needed:\n"
                         "- What specific information is missing?\n"
                         "- What context would help provide a better solution?\n"
@@ -728,14 +740,15 @@ def create_app():
             badge_text = "Yes" if db_need_more_context else "No"
             badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
             # Return all values except db_need_more_context (index 9), plus the badge_html
-            # result[:9] = first 9 items, result[10:12] = items 10 and 11 (user annotations), result[12] = labels
-            return result[:9] + result[10:12] + (badge_html, result[12])
+            # result[:9] = first 9 items, result[10:13] = items 10-12 (is_context_correct, need_more_context, reason), result[13] = labels
+            return result[:9] + result[10:13] + (badge_html, result[13])
 
         # Event handlers
         def handle_save_feedback(
             feedback,
             golden_solution,
             expected_behavior,
+            is_context_correct,
             need_more_context,
             need_more_context_reason,
         ):
@@ -743,6 +756,7 @@ def create_app():
                 feedback,
                 golden_solution,
                 expected_behavior,
+                is_context_correct,
                 need_more_context,
                 need_more_context_reason,
             )
@@ -762,6 +776,7 @@ def create_app():
                 nav,
                 raw_step,
                 db_need_more_context,
+                user_is_context_correct,
                 user_need_more_context,
                 user_need_more_context_reason,
                 labels_json,
@@ -798,6 +813,7 @@ def create_app():
                 gr.update(visible=show_outputs),  # outputs_section visibility
                 raw_step,  # step_by_step_raw
                 badge_html,  # db_need_more_context_display
+                user_is_context_correct,  # is_context_correct_toggle
                 user_need_more_context,  # need_more_context_toggle
                 user_need_more_context_reason,  # need_more_context_reason
                 labels_json,  # labels_display
@@ -817,6 +833,7 @@ def create_app():
                 nav,
                 raw_step,
                 db_need_more_context,
+                user_is_context_correct,
                 user_need_more_context,
                 user_need_more_context_reason,
                 labels_json,
@@ -853,6 +870,7 @@ def create_app():
                 gr.update(visible=show_outputs),  # outputs_section visibility
                 raw_step,  # step_by_step_raw
                 badge_html,  # db_need_more_context_display
+                user_is_context_correct,  # is_context_correct_toggle
                 user_need_more_context,  # need_more_context_toggle
                 user_need_more_context_reason,  # need_more_context_reason
                 labels_json,  # labels_display
@@ -871,6 +889,7 @@ def create_app():
                     nav,
                     raw_step,
                     db_need_more_context,
+                    user_is_context_correct,
                     user_need_more_context,
                     user_need_more_context_reason,
                     labels_json,
@@ -887,6 +906,7 @@ def create_app():
                     nav,
                     raw_step,
                     db_need_more_context,
+                    user_is_context_correct,
                     user_need_more_context,
                     user_need_more_context_reason,
                     labels_json,
@@ -923,6 +943,7 @@ def create_app():
                 gr.update(visible=show_outputs),  # outputs_section visibility
                 raw_step,  # step_by_step_raw
                 badge_html,  # db_need_more_context_display
+                user_is_context_correct,  # is_context_correct_toggle
                 user_need_more_context,  # need_more_context_toggle
                 user_need_more_context_reason,  # need_more_context_reason
                 labels_json,  # labels_display
@@ -939,8 +960,8 @@ def create_app():
             badge_text = "Yes" if db_need_more_context else "No"
             badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
             # Return all values except db_need_more_context (index 9), plus the badge_html
-            # result[:9] = first 9 items, result[10:12] = items 10 and 11 (user annotations), result[12] = labels
-            return result[:9] + result[10:12] + (badge_html, result[12])
+            # result[:9] = first 9 items, result[10:13] = items 10-12 (is_context_correct, need_more_context, reason), result[13] = labels
+            return result[:9] + result[10:13] + (badge_html, result[13])
 
         def handle_outputs_toggle(show_outputs):
             return gr.update(visible=show_outputs)
@@ -965,11 +986,11 @@ def create_app():
             )
 
         def handle_annotation_view_toggle(view_selection):
-            """Toggle between feedback, golden solution, expected behavior, and need more context views."""
+            """Toggle between feedback, golden solution, expected behavior, and context views."""
             show_feedback = view_selection == "Feedback & Failure Mode"
             show_golden = view_selection == "Golden Solution"
             show_expected = view_selection == "Expected Behavior"
-            show_need_context = view_selection == "Need More Context"
+            show_need_context = view_selection == "Context"
             return (
                 gr.update(visible=show_feedback),  # feedback_text
                 gr.update(visible=show_golden),  # golden_solution_text
@@ -990,6 +1011,7 @@ def create_app():
                 expected_behavior_text,
                 nav_info,
                 step_by_step_raw,
+                is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 db_need_more_context_display,
@@ -1024,6 +1046,7 @@ def create_app():
                 outputs_section,
                 step_by_step_raw,
                 db_need_more_context_display,
+                is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 labels_display,
@@ -1057,6 +1080,7 @@ def create_app():
                 outputs_section,
                 step_by_step_raw,
                 db_need_more_context_display,
+                is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 labels_display,
@@ -1091,6 +1115,7 @@ def create_app():
                 outputs_section,
                 step_by_step_raw,
                 db_need_more_context_display,
+                is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 labels_display,
@@ -1103,6 +1128,7 @@ def create_app():
                 feedback_text,
                 golden_solution_text,
                 expected_behavior_text,
+                is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
             ],
@@ -1122,6 +1148,7 @@ def create_app():
                 expected_behavior_text,
                 nav_info,
                 step_by_step_raw,
+                is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 db_need_more_context_display,

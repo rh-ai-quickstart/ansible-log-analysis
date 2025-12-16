@@ -1,5 +1,5 @@
-from alm.agents.loki_agent.graph import loki_agent_graph
-from alm.agents.loki_agent.state import LokiAgentState
+# from alm.agents.loki_agent.graph import loki_agent_graph
+# from alm.agents.loki_agent.state import LokiAgentState
 from alm.llm import get_llm
 
 from alm.agents.get_more_context_agent.node import (
@@ -33,18 +33,20 @@ async def loki_router_node(state: ContextAgentState):
 
 
 async def loki_sub_agent(state: ContextAgentState):
-    loki_state = LokiAgentState(
-        log_entry=state.log_entry,
-        log_summary=state.log_summary,
-        expert_classification=state.expert_classification,
-        cheat_sheet_context=state.cheat_sheet_context,
-        loki_router_result=state.loki_router_result,
-    )
-    loki_result = await loki_agent_graph.ainvoke(loki_state)
-    loki_result_state = LokiAgentState.model_validate(loki_result)
+    # loki_state = LokiAgentState(
+    #     log_entry=state.log_entry,
+    #     log_summary=state.log_summary,
+    #     expert_classification=state.expert_classification,
+    #     cheat_sheet_context=state.cheat_sheet_context,
+    #     loki_router_result=state.loki_router_result,
+    # )
+    state = state
+    # loki_result = await loki_agent_graph.ainvoke(loki_state)
+    # loki_result_state = LokiAgentState.model_validate(loki_result)
     return Command(
         goto=END,
-        update={"loki_context": loki_result_state.additional_context_from_loki},
+        update={"loki_context": ""},
+        # update={"loki_context": loki_result_state.additional_context_from_loki},
     )
 
 
