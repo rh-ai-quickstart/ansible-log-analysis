@@ -116,12 +116,19 @@ services:
       - ../../data/logs/failed:/app/sample-logs:ro,z
     networks:
       - alm
+    # Memory limit for file loading (500 files with events needs ~3-4GB)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 120s  # Give time to load 500 files before health checks
     restart: unless-stopped
 
   postgres:
