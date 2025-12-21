@@ -46,6 +46,7 @@ grafana:
       # -- Set to false for OpenShift clusters without Gateway API; uses extraObjects Route instead
       enabled: false
   adminUser: admin
+  adminPassword: alm_password
   containerSecurityContext:
     allowPrivilegeEscalation: false
     capabilities:
