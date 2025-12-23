@@ -1,187 +1,223 @@
 """
-Load RAG embeddings from PostgreSQL and build FAISS index.
+Load RAG index from MinIO (FAISS index and metadata).
 """
 
-import numpy as np
+import os
+import json
+import tempfile
+import pickle
+from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import faiss
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
-
-# Import models - we'll need to make these available
-# For now, we'll define a simple structure or import from the main codebase
-# In production, these should be in a shared package
+from minio import Minio
 
 
 class RAGIndexLoader:
     """
-    Loads embeddings from PostgreSQL and builds FAISS index in memory.
+    Loads FAISS index and metadata from MinIO.
+    Uses temp files for FAISS compatibility (FAISS prefers file paths).
     """
 
     def __init__(
-        self, database_url: str, model_name: str = "nomic-ai/nomic-embed-text-v1.5"
+        self,
+        minio_endpoint: str = None,
+        minio_port: str = None,
+        minio_access_key: str = None,
+        minio_secret_key: str = None,
+        bucket_name: str = "rag-index",
+        model_name: str = "nomic-ai/nomic-embed-text-v1.5",
     ):
         """
         Initialize the index loader.
 
         Args:
-            database_url: PostgreSQL connection URL
+            minio_endpoint: MinIO endpoint (from env if not provided)
+            minio_port: MinIO port (from env if not provided)
+            minio_access_key: MinIO access key (from env if not provided)
+            minio_secret_key: MinIO secret key (from env if not provided)
+            bucket_name: MinIO bucket name (default: "rag-index")
             model_name: Name of the embedding model (for validation)
         """
-        self.database_url = database_url.replace("+asyncpg", "").replace(
-            "postgresql", "postgresql+asyncpg"
+        # Get MinIO config from environment
+        endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT")
+        port = minio_port or os.getenv("MINIO_PORT", "9000")
+        access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY")
+        secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY")
+
+        if not all([endpoint, port, access_key, secret_key]):
+            raise ValueError(
+                "Missing required MinIO environment variables: "
+                "MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY"
+            )
+
+        self.minio_client = Minio(
+            endpoint=f"{endpoint}:{port}",
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=False,  # Use HTTP for internal OpenShift services
         )
+        self.bucket_name = bucket_name
         self.model_name = model_name
         self.embedding_dim = 768  # nomic-embed-text-v1.5 dimension
-
-        self.engine = create_async_engine(self.database_url)
-        self.session_factory = sessionmaker(
-            self.engine, class_=SQLModelAsyncSession, expire_on_commit=False
-        )
 
         self.index: Optional[faiss.Index] = None
         self.error_store: Dict[str, Dict[str, Any]] = {}
         self.index_to_error_id: Dict[int, str] = {}
         self._loaded = False
 
+    def check_index_ready(self) -> bool:
+        """
+        Check if index is ready by reading LATEST.json pointer file.
+
+        Returns:
+            True if status is READY, False otherwise
+        """
+        try:
+            if not self.minio_client.bucket_exists(self.bucket_name):
+                return False
+
+            response = self.minio_client.get_object(self.bucket_name, "LATEST.json")
+            pointer = json.loads(response.read().decode())
+            return pointer.get("status") == "READY"
+        except Exception:
+            return False
+
     async def load_index(
         self,
     ) -> Tuple[faiss.Index, Dict[str, Dict[str, Any]], Dict[int, str]]:
         """
-        Load embeddings from PostgreSQL and build FAISS index.
+        Load FAISS index and metadata from MinIO.
+
+        Uses temp files for FAISS compatibility (FAISS prefers file paths).
 
         Returns:
             Tuple of (FAISS index, error_store, index_to_error_id mapping)
+
+        Raises:
+            ValueError: If index is not ready or not found
         """
         if self._loaded and self.index is not None:
             return self.index, self.error_store, self.index_to_error_id
 
-        print("Loading embeddings from PostgreSQL...")
+        print("Loading RAG index from MinIO...")
 
-        # Define RAGEmbedding model inline (or import from shared package)
-        # For now, we'll use raw SQL to avoid circular dependencies
-        from sqlalchemy import text
-
-        async with self.engine.begin() as conn:
-            # Query all embeddings
-            # Note: pgvector Vector type may be returned as string, we'll parse it in Python
-            result = await conn.execute(
-                text("""
-                    SELECT 
-                        error_id,
-                        embedding,
-                        error_title,
-                        error_metadata,
-                        model_name,
-                        embedding_dim
-                    FROM ragembedding
-                    ORDER BY error_id
-                """)
+        # Check if bucket exists
+        if not self.minio_client.bucket_exists(self.bucket_name):
+            raise ValueError(
+                f"MinIO bucket '{self.bucket_name}' does not exist. "
+                "Run init job first to create the index."
             )
-            rows = result.fetchall()
 
-        if not rows:
-            raise ValueError("No embeddings found in PostgreSQL. Run init job first.")
+        # Check status from LATEST.json
+        try:
+            response = self.minio_client.get_object(self.bucket_name, "LATEST.json")
+            pointer = json.loads(response.read().decode())
+            status = pointer.get("status")
 
-        print(f"Found {len(rows)} embeddings in database")
-
-        # Extract data
-        embeddings_list = []
-        error_ids = []
-        error_store = {}
-        index_to_error_id = {}
-
-        for idx, row in enumerate(rows):
-            error_id = row[0]
-            embedding = row[1]  # This is a list/array
-            error_title = row[2]
-            error_metadata = row[3] if row[3] else {}
-            model_name_db = row[4]
-            embedding_dim_db = row[5]
-
-            # Validate model
-            if model_name_db != self.model_name:
-                print(
-                    f"Warning: Model mismatch. DB has {model_name_db}, expected {self.model_name}"
-                )
-
-            if embedding_dim_db != self.embedding_dim:
+            if status == "FAILED":
+                error_msg = pointer.get("error_message", "Unknown error")
                 raise ValueError(
-                    f"Embedding dimension mismatch: DB has {embedding_dim_db}, "
-                    f"expected {self.embedding_dim}"
+                    f"RAG index build failed: {error_msg}. "
+                    "Run init job again to rebuild the index."
                 )
 
-            # Convert embedding to numpy array
-            # Handle both array and string representations from pgvector
-            if isinstance(embedding, str):
-                # Parse string representation (e.g., "[0.1, 0.2, ...]")
-                import json
-                import ast
-
-                try:
-                    # Try JSON first (safer)
-                    embedding = json.loads(embedding)
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, use ast.literal_eval (safe for literals)
-                    # pgvector returns vectors as string like '[0.1,0.2,...]'
-                    try:
-                        embedding = ast.literal_eval(embedding)
-                    except (ValueError, SyntaxError):
-                        raise ValueError(
-                            f"Could not parse embedding for {error_id}: invalid format"
-                        )
-
-            embedding_array = np.array(embedding, dtype=np.float32)
-
-            # Validate embedding shape
-            if embedding_array.shape[0] != self.embedding_dim:
+            if status != "READY":
                 raise ValueError(
-                    f"Invalid embedding shape for {error_id}: "
-                    f"expected {self.embedding_dim}, got {embedding_array.shape[0]}"
+                    f"RAG index is not ready (status: {status}). "
+                    "Wait for init job to complete or run init job first."
                 )
 
-            embeddings_list.append(embedding_array)
-            error_ids.append(error_id)
+            # Validate model name if present
+            if "model_name" in pointer:
+                model_name_db = pointer["model_name"]
+                if model_name_db != self.model_name:
+                    print(
+                        f"Warning: Model mismatch. Index has {model_name_db}, "
+                        f"expected {self.model_name}"
+                    )
 
-            # Build error_store
-            error_store[error_id] = {
-                "error_id": error_id,
-                "error_title": error_title,
-                "sections": error_metadata.get("sections", {}),
-                "metadata": error_metadata.get("metadata", {}),
-            }
+        except Exception as e:
+            if isinstance(e, ValueError):
+                raise
+            raise ValueError(
+                f"Could not read LATEST.json from MinIO: {e}. "
+                "Run init job first to create the index."
+            )
 
-            index_to_error_id[idx] = error_id
+        # Create temp directory for artifacts
+        temp_dir = Path(tempfile.mkdtemp(prefix="rag-index-"))
 
-        # Convert to numpy array
-        embeddings = np.array(embeddings_list, dtype=np.float32)
+        try:
+            index_path = temp_dir / "index.faiss"
+            metadata_path = temp_dir / "metadata.pkl"
 
-        print(f"Loaded {len(embeddings)} embeddings, shape: {embeddings.shape}")
+            # Download FAISS index to temp file
+            try:
+                self.minio_client.fget_object(
+                    self.bucket_name, "index.faiss", str(index_path)
+                )
+                print("Downloaded FAISS index to temp file")
+            except Exception as e:
+                raise ValueError(
+                    f"Could not download index.faiss from MinIO: {e}. "
+                    "Run init job first to create the index."
+                )
 
-        # Verify embeddings are normalized
-        norms = np.linalg.norm(embeddings, axis=1)
-        print(
-            f"Embedding norms: min={norms.min():.4f}, max={norms.max():.4f}, mean={norms.mean():.4f}"
-        )
+            # Load FAISS index from file (FAISS prefers file paths)
+            try:
+                self.index = faiss.read_index(str(index_path))
+                print(f"Loaded FAISS index with {self.index.ntotal} vectors")
+            except Exception as e:
+                raise ValueError(f"Could not load FAISS index: {e}")
 
-        # Build FAISS index
-        print(f"Building FAISS IndexFlatIP with dimension {self.embedding_dim}...")
-        index = faiss.IndexFlatIP(self.embedding_dim)
-        index.add(embeddings)
+            # Download metadata to temp file
+            try:
+                self.minio_client.fget_object(
+                    self.bucket_name, "metadata.pkl", str(metadata_path)
+                )
+                print("Downloaded metadata to temp file")
+            except Exception as e:
+                raise ValueError(
+                    f"Could not download metadata.pkl from MinIO: {e}. "
+                    "Run init job first to create the index."
+                )
 
-        print(f"FAISS index created with {index.ntotal} vectors")
+            # Load metadata from file
+            try:
+                with open(metadata_path, "rb") as f:
+                    metadata = pickle.load(f)
+            except Exception as e:
+                raise ValueError(f"Could not load metadata: {e}")
 
-        # Store for reuse
-        self.index = index
-        self.error_store = error_store
-        self.index_to_error_id = index_to_error_id
-        self._loaded = True
+            self.error_store = metadata["error_store"]
+            self.index_to_error_id = metadata["index_to_error_id"]
 
-        return index, error_store, index_to_error_id
+            # Validate model name from metadata
+            if "model_name" in metadata:
+                model_name_meta = metadata["model_name"]
+                if model_name_meta != self.model_name:
+                    print(
+                        f"Warning: Model mismatch in metadata. "
+                        f"Metadata has {model_name_meta}, expected {self.model_name}"
+                    )
+
+            self._loaded = True
+
+            print("✓ RAG index loaded successfully")
+            print(f"  Total errors: {len(self.error_store)}")
+            print(f"  Model: {metadata.get('model_name', 'unknown')}")
+
+            return self.index, self.error_store, self.index_to_error_id
+
+        finally:
+            # Cleanup temp directory
+            import shutil
+
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     async def reload_index(self):
-        """Force reload of index from database."""
+        """Force reload of index from MinIO."""
         self._loaded = False
         self.index = None
         self.error_store = {}

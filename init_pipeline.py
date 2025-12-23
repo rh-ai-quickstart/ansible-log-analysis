@@ -50,13 +50,14 @@ def setup_data_directories():
 
 async def build_rag_index():
     """
-    Build RAG index from knowledge base PDFs and save to PostgreSQL.
-    This runs during the init job to create the FAISS index and save embeddings to database.
+    Build RAG index from knowledge base PDFs and save to MinIO.
+    This runs during the init job to create the FAISS index and save artifacts to MinIO.
     """
     from alm.config import config
     from alm.rag.ingest_and_chunk import AnsibleErrorParser
     from alm.rag.embed_and_index import AnsibleErrorEmbedder
-    from alm.database import init_tables
+    from minio import Minio
+    import json
 
     # Check if RAG is enabled (consistent with rag_handler.py)
     rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
@@ -67,39 +68,50 @@ async def build_rag_index():
         )
         return
 
-    # Check if embeddings already exist in PostgreSQL (skip rebuild for faster upgrades)
-    from alm.database import get_session
-    from alm.models import RAGEmbedding
-    from sqlmodel import select
+    # Check if index already exists in MinIO (skip rebuild for faster upgrades)
+    bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
+    minio_endpoint = os.getenv("MINIO_ENDPOINT")
+    minio_port = os.getenv("MINIO_PORT", "9000")
+    minio_access_key = os.getenv("MINIO_ACCESS_KEY")
+    minio_secret_key = os.getenv("MINIO_SECRET_KEY")
 
-    try:
-        async with get_session() as session:
-            result = await session.exec(select(RAGEmbedding))
-            existing = result.first()
-            if existing:
-                count_result = await session.exec(select(RAGEmbedding))
-                count = len(list(count_result.all()))
-                print(
-                    f"✓ Found {count} existing embeddings in PostgreSQL, skipping rebuild"
-                )
-                print(
-                    "  To force rebuild, delete embeddings from PostgreSQL or set RAG_FORCE_REBUILD=true"
-                )
-                if os.getenv("RAG_FORCE_REBUILD", "false").lower() != "true":
-                    return
-    except Exception as e:
-        print(f"⚠ Could not check PostgreSQL: {e}")
-        print("  Proceeding with index build...")
+    if all([minio_endpoint, minio_port, minio_access_key, minio_secret_key]):
+        try:
+            minio_client = Minio(
+                endpoint=f"{minio_endpoint}:{minio_port}",
+                access_key=minio_access_key,
+                secret_key=minio_secret_key,
+                secure=False,
+            )
+
+            # Check if LATEST.json exists and status is READY
+            if minio_client.bucket_exists(bucket_name):
+                try:
+                    response = minio_client.get_object(bucket_name, "LATEST.json")
+                    pointer = json.loads(response.read().decode())
+                    if pointer.get("status") == "READY":
+                        total_errors = pointer.get("total_errors", 0)
+                        print(
+                            f"✓ Found existing RAG index in MinIO (status: READY, {total_errors} errors), skipping rebuild"
+                        )
+                        print(
+                            "  To force rebuild, delete index from MinIO or set RAG_FORCE_REBUILD=true"
+                        )
+                        if os.getenv("RAG_FORCE_REBUILD", "false").lower() != "true":
+                            return
+                except Exception:
+                    # LATEST.json doesn't exist or can't be read, proceed with build
+                    pass
+        except Exception as e:
+            print(f"⚠ Could not check MinIO: {e}")
+            print("  Proceeding with index build...")
 
     print("\n" + "=" * 70)
     print("BUILDING RAG INDEX FROM KNOWLEDGE BASE")
-    print("  Storage: PostgreSQL")
+    print("  Storage: MinIO")
     print("=" * 70)
 
     try:
-        # Ensure database tables exist
-        await init_tables(delete_tables=False)
-
         # Validate configuration
         config.print_config()
         config.validate()
@@ -143,10 +155,10 @@ async def build_rag_index():
         print(f"TOTAL: {len(all_chunks)} chunks from {len(pdf_files)} PDFs")
         print(f"{'=' * 70}")
 
-        # Build and save index to PostgreSQL
-        await embedder.ingest_and_index_to_postgresql(all_chunks)
+        # Build and save index to MinIO
+        await embedder.ingest_and_index_to_minio(all_chunks)
         print("\n" + "=" * 70)
-        print("✓ RAG INDEX BUILD COMPLETE (PostgreSQL)")
+        print("✓ RAG INDEX BUILD COMPLETE (MinIO)")
         print("=" * 70)
 
     except Exception as e:
@@ -185,15 +197,26 @@ async def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 300):
             try:
                 response = await client.get(ready_url)
                 if response.status_code == 200:
-                    data = response.json()
-                    index_size = data.get("index_size", 0)
-                    print(f"✓ RAG service is ready (index size: {index_size})")
-                    return
+                    try:
+                        data = response.json()
+                        index_size = data.get("index_size", 0)
+                        print(f"✓ RAG service is ready (index size: {index_size})")
+                        return
+                    except (ValueError, TypeError):
+                        # Invalid JSON response - treat as not ready
+                        print(
+                            f"RAG service returned invalid JSON (status: {response.status_code}), waiting..."
+                        )
                 else:
                     print(
                         f"RAG service not ready yet (status: {response.status_code}), waiting..."
                     )
-            except (httpx.RequestError, httpx.HTTPStatusError):
+            except (
+                httpx.RequestError,
+                httpx.HTTPStatusError,
+                ValueError,
+                TypeError,
+            ):
                 if elapsed == 0:
                     print(
                         f"RAG service not yet available at {rag_service_url}, waiting..."

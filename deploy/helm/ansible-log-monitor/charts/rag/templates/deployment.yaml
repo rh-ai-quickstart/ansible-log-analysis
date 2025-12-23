@@ -29,23 +29,116 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "rag.serviceAccountName" . }}
       initContainers:
-        - name: wait-for-postgres
-          image: postgres:15-alpine
+        - name: wait-for-rag-index
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           command:
             - sh
             - -c
             - |
-              until pg_isready -d "$DATABASE_URL"; do
-                echo "Waiting for PostgreSQL to be ready..."
-                sleep 5
-              done
-              echo "PostgreSQL is ready!"
+              python3 <<'PYTHON_SCRIPT'
+              import os
+              import json
+              import time
+              import sys
+
+              try:
+                  from minio import Minio
+              except ImportError as e:
+                  print(f"ERROR: Failed to import minio library: {e}")
+                  print("  Make sure 'minio' package is installed in the container image")
+                  sys.exit(1)
+
+              endpoint = os.getenv("MINIO_ENDPOINT")
+              port = os.getenv("MINIO_PORT", "9000")
+              access_key = os.getenv("MINIO_ACCESS_KEY")
+              secret_key = os.getenv("MINIO_SECRET_KEY")
+              bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
+              max_wait = int(os.getenv("MAX_WAIT", "300"))
+
+              if not all([endpoint, port, access_key, secret_key]):
+                  print("ERROR: Missing required MinIO environment variables")
+                  print(f"  MINIO_ENDPOINT: {endpoint}")
+                  print(f"  MINIO_PORT: {port}")
+                  print(f"  MINIO_ACCESS_KEY: {'***' if access_key else 'MISSING'}")
+                  print(f"  MINIO_SECRET_KEY: {'***' if secret_key else 'MISSING'}")
+                  sys.exit(1)
+
+              client = Minio(
+                  f"{endpoint}:{port}",
+                  access_key=access_key,
+                  secret_key=secret_key,
+                  secure=False,
+              )
+
+              elapsed = 0
+
+              while elapsed < max_wait:
+                  try:
+                      # Check if bucket exists
+                      if not client.bucket_exists(bucket_name):
+                          if elapsed == 0 or elapsed % 30 == 0:
+                              print(f"  Bucket '{bucket_name}' does not exist yet... ({elapsed}s/{max_wait}s)")
+                          time.sleep(5)
+                          elapsed += 5
+                          continue
+                      
+                      # Check LATEST.json
+                      response = client.get_object(bucket_name, "LATEST.json")
+                      pointer = json.loads(response.read().decode())
+                      status = pointer.get("status")
+                      
+                      if status == "READY":
+                          total_errors = pointer.get("total_errors", 0)
+                          print(f"✓ RAG index is ready! (status: READY, {total_errors} errors)")
+                          sys.exit(0)
+                      
+                      if status == "FAILED":
+                          error_msg = pointer.get("error_message", "Unknown error")
+                          print(f"✗ RAG index build failed: {error_msg}")
+                          sys.exit(1)
+                      
+                      # Status is BUILDING or something else
+                      if elapsed == 0 or elapsed % 30 == 0:
+                          print(f"  Index status: {status}, waiting... ({elapsed}s/{max_wait}s)")
+                      
+                  except Exception as e:
+                      # LATEST.json doesn't exist or can't be read, or connection error
+                      if elapsed == 0 or elapsed % 30 == 0:
+                          error_type = type(e).__name__
+                          error_msg = str(e)[:200]  # Limit error message length
+                          print(f"  Index not yet available ({error_type}: {error_msg})... ({elapsed}s/{max_wait}s)")
+                  
+                  time.sleep(5)
+                  elapsed += 5
+
+              print(f"✗ Timeout waiting for RAG index (waited {max_wait}s)")
+              sys.exit(1)
+              PYTHON_SCRIPT
           env:
-            - name: DATABASE_URL
+            - name: MINIO_ENDPOINT
               valueFrom:
                 secretKeyRef:
-                  name: pgvector
-                  key: uri
+                  name: minio
+                  key: host
+            - name: MINIO_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: port
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: user
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio
+                  key: password
+            - name: RAG_BUCKET_NAME
+              value: {{ .Values.rag.bucketName | default "rag-index" | quote }}
+            - name: MAX_WAIT
+              value: {{ .Values.rag.maxWait | default "300" | quote }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}

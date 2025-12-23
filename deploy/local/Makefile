@@ -120,33 +120,25 @@ aap-mock: prepare-logs ## 🎭 Start AAP Mock (Log Generator) and auto-start rep
 	@echo "   Starting AAP Mock (Log Generator)..."
 	@$(COMPOSE_CMD) -f compose.yaml up -d aap-mock
 	@echo "   Waiting for AAP Mock to load 500 files and start server..."
-	@echo "   (Files load BEFORE server starts - this takes ~2-3 minutes with 500 files)"
-	@for i in $$(seq 1 90); do \
+	@echo "   (Files load BEFORE server starts - this takes ~45-60 seconds)"
+	@for i in $$(seq 1 45); do \
 		FILE_COUNT=$$(curl -s http://localhost:8082/api/auto-loaded 2>/dev/null | grep -o '"count":[0-9]*' | grep -o '[0-9]*' || echo ""); \
 		if [ -n "$$FILE_COUNT" ] && [ "$$FILE_COUNT" -gt 0 ] 2>/dev/null; then \
 			echo "   ✓ Server ready with $$FILE_COUNT files loaded!"; \
 			break; \
 		fi; \
-		if [ $$i -eq 90 ]; then \
-			echo "   ⚠️  Timeout (180s) - server may still be loading. Try 'make replay' later."; \
+		if [ $$i -eq 45 ]; then \
+			echo "   ⚠️  Timeout (90s) - proceeding anyway..."; \
 		else \
-			echo "   ... loading files ($$i/90) - server not ready yet"; \
+			echo "   ... loading files ($$i/45) - server not ready yet"; \
 			sleep 2; \
 		fi; \
 	done
 	@echo "   Starting log replay (loop mode)..."
-	@for retry in 1 2 3; do \
-		RESULT=$$(curl -s -X POST "http://localhost:8082/api/logs/replay" \
-			-H "Content-Type: application/json" \
-			-d '{"source": "auto-loaded", "id_or_path": "all", "loop": true, "rate_lines_per_sec": 100}' 2>/dev/null); \
-		if echo "$$RESULT" | grep -q "Replay started"; then \
-			echo "   ✓ Replay started successfully!"; \
-			break; \
-		else \
-			echo "   ... replay attempt $$retry/3 failed, retrying in 5s..."; \
-			sleep 5; \
-		fi; \
-	done
+	@curl -s -X POST "http://localhost:8082/api/logs/replay" \
+		-H "Content-Type: application/json" \
+		-d '{"source": "auto-loaded", "id_or_path": "all", "loop": true, "rate_lines_per_sec": 100}' | head -c 200 || true
+	@echo ""
 	@echo "   ✅ AAP Mock running with replay started!"
 
 replay: ## 🔄 Start log replay on AAP Mock (loop mode)

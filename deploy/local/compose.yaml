@@ -118,19 +118,12 @@ services:
       - ../../data/logs/failed:/app/sample-logs:ro,z
     networks:
       - alm
-    # Memory limit for file loading (500 files with events needs ~3-4GB)
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s  # Give time to load 500 files before health checks
+      start_period: 10s
     restart: unless-stopped
 
   postgres:
@@ -256,6 +249,28 @@ services:
     # Note: This service requires significant memory (8Gi recommended)
     # Adjust resources based on your system capabilities
 
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"  # MinIO Console port
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_SERVER_URL=http://minio:9000
+    command: server /data --console-address ":9001"
+    networks:
+      - alm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - minio_data:/data
+
   alm-rag:
     build:
       context: ../..
@@ -264,19 +279,25 @@ services:
     ports:
       - "8002:8002"
     environment:
-      # Use container network name for PostgreSQL (not localhost)
-      # Override any local DATABASE_URL to use container network
-      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/logsdb
+      # MinIO configuration (for RAG index storage)
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio}
+      - MINIO_PORT=${MINIO_PORT:-9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - RAG_BUCKET_NAME=${RAG_BUCKET_NAME:-rag-index}
+      # Embedding service
       - EMBEDDINGS_LLM_URL=http://alm-embedding:8080
       - RAG_MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
       - PORT=8002
     networks:
       - alm
     depends_on:
-      postgres:
-        condition: service_healthy
       alm-embedding:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      # Note: RAG service will wait for index to be ready in MinIO
+      # In local dev, you may need to run init job first to create the index
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
@@ -289,3 +310,4 @@ volumes:
   postgres_data:
   aap_mock_data:
   aap_mock_logs:
+  minio_data:

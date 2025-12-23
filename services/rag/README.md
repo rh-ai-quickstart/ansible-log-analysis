@@ -4,19 +4,18 @@ FastAPI microservice for RAG (Retrieval-Augmented Generation) queries.
 
 ## Overview
 
-The RAG service provides similarity search over the knowledge base embeddings stored in PostgreSQL. It:
+The RAG service provides similarity search over the knowledge base embeddings stored in MinIO. It:
 
-1. **Starts immediately** (non-blocking startup) - service becomes available even if embeddings aren't ready
-2. **Polls PostgreSQL** in background - checks every 5 seconds for embeddings (up to 10 minutes)
-3. **Loads embeddings** when available - parses pgvector format and builds FAISS index in memory
-4. **Exposes REST API** - provides query endpoints for knowledge base retrieval
+1. **Waits for index** (initContainer) - ensures index is ready before main container starts
+2. **Loads once at startup** - loads FAISS index and metadata from MinIO using temp files
+3. **Exposes REST API** - provides query endpoints for knowledge base retrieval
 
 ### Key Features
 
-- **Non-blocking startup**: Service starts immediately, loads index in background
-- **Graceful degradation**: Service stays in "not ready" state until embeddings available
-- **Automatic recovery**: Polls PostgreSQL until embeddings found
-- **No circular dependencies**: Can start before init job completes
+- **Deterministic startup**: InitContainer ensures index is ready before service starts
+- **Fast loading**: Loads pre-built FAISS index from MinIO (no rebuilding needed)
+- **No polling**: One-time load at startup, no background polling
+- **MinIO-based**: Artifacts stored in MinIO (index.faiss, metadata.pkl, LATEST.json)
 
 ## API Endpoints
 
@@ -101,51 +100,57 @@ Readiness check - ensures index is loaded. Returns 503 if index not ready, 200 w
 
 ### `POST /rag/reload`
 
-Reload the index from PostgreSQL without restarting the service.
+Reload the index from MinIO without restarting the service.
 
 ## Environment Variables
 
-- `DATABASE_URL` - PostgreSQL connection URL (required)
+- `MINIO_ENDPOINT` - MinIO endpoint (required)
+- `MINIO_PORT` - MinIO port (default: `9000`)
+- `MINIO_ACCESS_KEY` - MinIO access key (required)
+- `MINIO_SECRET_KEY` - MinIO secret key (required)
+- `RAG_BUCKET_NAME` - MinIO bucket name (default: `rag-index`)
 - `EMBEDDINGS_LLM_URL` - URL of the embedding service (default: `http://alm-embedding:8080`)
 - `RAG_MODEL_NAME` - Name of the embedding model (default: `nomic-ai/nomic-embed-text-v1.5`)
 - `PORT` - Service port (default: `8002`)
 
 ## Startup Behavior
 
-The service uses a **background task** to load the index, allowing it to start even if embeddings aren't available yet:
+The service uses an **initContainer** to ensure the index is ready before the main container starts:
 
-1. **Service starts** → FastAPI application becomes available
-2. **Background task starts** → Begins polling PostgreSQL every 5 seconds
-3. **If embeddings found** → Loads index, service becomes ready
-4. **If embeddings not found** → Continues polling (up to 10 minutes)
-5. **Service state**:
-   - `/health` always returns 200 (service is running)
+1. **InitContainer starts** → Waits for `LATEST.json` with `status: "READY"` in MinIO
+2. **Main container starts** → Loads index from MinIO once at startup
+3. **Service ready** → `/ready` endpoint returns 200
+4. **Service state**:
+   - `/health` returns service status
    - `/ready` returns 503 until index loaded, then 200
 
-This design allows the RAG service to start independently of the init job, eliminating circular dependencies.
+This design ensures deterministic startup - the service only starts when the index is ready.
 
 ## Deployment
 
 The service is deployed as a Kubernetes deployment via Helm chart.
 
 **Prerequisites:**
-- PostgreSQL with `pgvector` extension enabled
-- `ragembedding` table (created automatically by init job)
-- Embeddings populated in database (via init job)
+- MinIO/S3 accessible
+- RAG index artifacts in MinIO bucket (created by init job):
+  - `index.faiss` - FAISS index
+  - `metadata.pkl` - Error metadata
+  - `LATEST.json` - Status pointer (status: READY)
 
 **Startup Sequence:**
 1. RAG service pod starts
-2. Waits for PostgreSQL (initContainer)
-3. Service starts, begins background polling
-4. When embeddings available, loads index automatically
-5. Service becomes ready for queries
+2. InitContainer waits for RAG index in MinIO (checks LATEST.json status=READY)
+3. Main container starts and loads index from MinIO once
+4. Service becomes ready for queries
 
 ## Dependencies
 
-- **PostgreSQL** with `ragembedding` table populated (via init job)
-- **pgvector extension** - for vector storage and queries
+- **MinIO/S3** with RAG index artifacts (via init job)
+  - `index.faiss` - FAISS index file
+  - `metadata.pkl` - Error metadata
+  - `LATEST.json` - Status pointer file
 - **Embedding service (TEI)** - for generating query embeddings
 - **FAISS** - for in-memory similarity search
 - **FastAPI** - web framework
-- **asyncpg** - async PostgreSQL driver
+- **minio** - MinIO client library
 

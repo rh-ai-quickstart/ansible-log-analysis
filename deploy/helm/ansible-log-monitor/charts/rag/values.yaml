@@ -57,17 +57,38 @@ httpRoute:
         value: /rag
 
 env:
-  - name: DATABASE_URL
+  - name: MINIO_ENDPOINT
     valueFrom:
       secretKeyRef:
-        name: pgvector
-        key: uri
+        name: minio
+        key: host
+  - name: MINIO_PORT
+    valueFrom:
+      secretKeyRef:
+        name: minio
+        key: port
+  - name: MINIO_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: minio
+        key: user
+  - name: MINIO_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: minio
+        key: password
+  - name: RAG_BUCKET_NAME
+    value: "rag-index"
   - name: EMBEDDINGS_LLM_URL
     value: "http://alm-embedding:8080"
   - name: RAG_MODEL_NAME
     value: "nomic-ai/nomic-embed-text-v1.5"
   - name: PORT
     value: "8002"
+
+rag:
+  bucketName: "rag-index"
+  maxWait: 300  # Maximum wait time for initContainer in seconds
 
 resources:
   requests:

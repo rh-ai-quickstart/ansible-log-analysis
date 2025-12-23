@@ -4,10 +4,9 @@ import os
 from datetime import datetime
 from typing import Generator
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
-from alm.models import GrafanaAlert, RAGEmbedding
+from alm.models import GrafanaAlert
 from alm.agents.state import GrafanaAlertState
 from alm.models import LogEntry
 from alm.utils.logger import get_logger
@@ -24,30 +23,15 @@ engine = create_async_engine(
 
 # Create tables
 async def init_tables(delete_tables=False):
-    # First, try to enable pgvector extension in a separate transaction
-    # This prevents transaction abort errors if extension creation fails
-    try:
-        async with engine.begin() as ext_conn:
-            await ext_conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            logger.info("pgvector extension enabled")
-    except Exception as e:
-        logger.warning(f"Could not enable pgvector extension: {e}")
-        logger.warning("This is OK if extension is already enabled or not available")
-        # For local dev without pgvector, we'll continue but RAG won't work
-        # In production, this should fail
-
     # Now create tables in a separate transaction
     async with engine.begin() as conn:
         if delete_tables:
             logger.info("Starting to delete tables")
-            # Only delete GrafanaAlert table, NOT RAGEmbedding
-            # RAG embeddings should persist across training pipeline runs
             await conn.run_sync(GrafanaAlert.metadata.drop_all)
-            # RAGEmbedding table is NOT deleted - it persists across runs
 
         # Create all tables
         await conn.run_sync(GrafanaAlert.metadata.create_all)
-        await conn.run_sync(RAGEmbedding.metadata.create_all)
+        # Note: RAG embeddings are stored in MinIO, not PostgreSQL
 
 
 def get_session():

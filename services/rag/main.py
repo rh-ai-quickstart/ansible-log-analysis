@@ -3,18 +3,31 @@ RAG Service - FastAPI service for RAG queries.
 """
 
 import os
-import asyncio
 from typing import Optional, List, Dict, Any
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from index_loader import RAGIndexLoader
 import time
+import logging
+import httpx
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s │ %(levelname)-8s │ %(name)-25s │ %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAG Service", version="0.1.0")
 
 # Global index loader (initialized on startup)
 index_loader: Optional[RAGIndexLoader] = None
+
+# Global HTTP client for embedding service (with connection pooling)
+embedding_client: Optional[httpx.AsyncClient] = None
 
 
 class QueryRequest(BaseModel):
@@ -61,76 +74,57 @@ class QueryResponse(BaseModel):
     metadata: Dict[str, Any]
 
 
-async def load_index_background():
-    """Background task to load index from PostgreSQL (polls until available)."""
+async def load_index():
+    """Load index from MinIO once at startup (initContainer ensures it's ready)."""
     global index_loader
 
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        print("ERROR: DATABASE_URL environment variable is required")
-        return
-
     model_name = os.getenv("RAG_MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
+    bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
 
     print("Initializing RAG index loader...")
-    index_loader = RAGIndexLoader(database_url=database_url, model_name=model_name)
+    index_loader = RAGIndexLoader(
+        bucket_name=bucket_name,
+        model_name=model_name,
+    )
 
-    # Wait for embeddings to be available (poll PostgreSQL)
-    # This allows the service to start before the init job completes
-    max_wait_time = 600  # 10 minutes
-    wait_interval = 5  # Check every 5 seconds
-    elapsed = 0
-
-    print("Waiting for embeddings to be available in PostgreSQL...")
-    while elapsed < max_wait_time:
-        try:
-            await index_loader.load_index()
-            print("✓ RAG index loaded successfully")
-            return
-        except ValueError as e:
-            if "No embeddings found" in str(e):
-                if elapsed == 0 or elapsed % 30 == 0:  # Print every 30 seconds
-                    print(
-                        f"Embeddings not yet available (waited {elapsed}s), retrying in {wait_interval}s..."
-                    )
-                await asyncio.sleep(wait_interval)
-                elapsed += wait_interval
-            else:
-                print(f"✗ Failed to load RAG index: {e}")
-                return  # Don't raise, just return - service will stay in "not ready" state
-        except Exception as e:
-            # Check if this is a "table doesn't exist" error - continue polling
-            error_str = str(e).lower()
-            if (
-                "does not exist" in error_str
-                or "undefinedtable" in error_str
-                or "relation" in error_str
-            ):
-                # Table doesn't exist yet - init job is still creating it
-                if elapsed == 0 or elapsed % 30 == 0:  # Print every 30 seconds
-                    print(
-                        f"Table not yet created (waited {elapsed}s), retrying in {wait_interval}s..."
-                    )
-                await asyncio.sleep(wait_interval)
-                elapsed += wait_interval
-            else:
-                # Some other error - log and continue polling (might be transient)
-                if elapsed == 0 or elapsed % 30 == 0:  # Print every 30 seconds
-                    print(f"Error loading index (waited {elapsed}s): {e}")
-                    print(f"  Retrying in {wait_interval}s...")
-                await asyncio.sleep(wait_interval)
-                elapsed += wait_interval
-
-    # If we get here, we've timed out
-    print(f"⚠ WARNING: Failed to load RAG index after {max_wait_time} seconds")
-    print("  Service will remain in 'not ready' state until embeddings are available")
+    try:
+        await index_loader.load_index()
+        print("✓ RAG index loaded successfully")
+    except Exception as e:
+        print(f"✗ Failed to load RAG index: {e}")
+        raise  # Fail startup if index can't be loaded (initContainer should prevent this)
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Start background task to load index."""
-    # Start background task - don't block startup
-    asyncio.create_task(load_index_background())
+    """Load index once at startup (initContainer ensures it's ready)."""
+    global embedding_client
+
+    await load_index()
+
+    # Initialize persistent HTTP client for embedding service with connection pooling
+    embedding_url = os.getenv("EMBEDDINGS_LLM_URL", "http://alm-embedding:8080")
+    embedding_client = httpx.AsyncClient(
+        base_url=embedding_url,
+        timeout=30.0,
+        limits=httpx.Limits(
+            max_keepalive_connections=20,  # Keep up to 20 connections alive
+            max_connections=100,  # Maximum total connections
+            keepalive_expiry=30.0,  # Keep connections alive for 30 seconds
+        ),
+    )
+    logger.info("Initialized embedding service HTTP client with connection pooling")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup resources on shutdown."""
+    global embedding_client
+
+    if embedding_client is not None:
+        await embedding_client.aclose()
+        logger.info("Closed embedding service HTTP client")
+        embedding_client = None
 
 
 @app.get("/health")
@@ -169,55 +163,82 @@ async def query_rag(request: QueryRequest):
 
     start_time = time.time()
 
+    # Log query start
+    logger.info("=" * 70)
+    logger.info("QUERYING RAG SYSTEM")
+    logger.info("=" * 70)
+    query_preview = (
+        request.query[:100] + "..." if len(request.query) > 100 else request.query
+    )
+    logger.info("Query: %s", query_preview)
+    logger.info(
+        "Parameters: top_k=%d, top_n=%d, threshold=%.2f",
+        request.top_k,
+        request.top_n,
+        request.similarity_threshold,
+    )
+
     try:
         # Step 1: Generate query embedding
-        # For now, we'll need to call the embedding service
-        # This should be the same TEI service used during indexing
-        embedding_url = os.getenv("EMBEDDINGS_LLM_URL", "http://alm-embedding:8080")
-
-        import httpx
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Prepare query text with task prefix (for nomic models)
-            query_text = f"search_query: {request.query}"
-
-            # Call embedding service
-            embedding_response = await client.post(
-                f"{embedding_url}/embeddings",
-                json={
-                    "input": [query_text],
-                    "model": "nomic-embed-text-v1.5",
-                },
+        # Use persistent HTTP client with connection pooling
+        if embedding_client is None:
+            raise HTTPException(
+                status_code=503, detail="Embedding service client not initialized"
             )
-            embedding_response.raise_for_status()
 
-            # Extract embedding
-            embedding_data = embedding_response.json()
-            if "data" in embedding_data and len(embedding_data["data"]) > 0:
-                query_embedding = np.array(
-                    embedding_data["data"][0]["embedding"], dtype=np.float32
-                )
-            elif (
-                "embeddings" in embedding_data and len(embedding_data["embeddings"]) > 0
-            ):
-                query_embedding = np.array(
-                    embedding_data["embeddings"][0], dtype=np.float32
-                )
-            else:
-                raise ValueError("Unexpected embedding response format")
+        logger.info("Calling TEI at: %s/embeddings", embedding_client.base_url)
+        logger.info("  Model: nomic-ai/nomic-embed-text-v1.5")
+        logger.info("  Total texts: 1 (will be batched into chunks of 30)")
+
+        # Prepare query text with task prefix (for nomic models)
+        query_text = f"search_query: {request.query}"
+
+        logger.info("  Processing batch 1/1 (1 texts)...")
+
+        # Call embedding service using persistent client
+        embedding_response = await embedding_client.post(
+            "/embeddings",
+            json={
+                "input": [query_text],
+                "model": "nomic-embed-text-v1.5",
+            },
+        )
+        embedding_response.raise_for_status()
+
+        logger.info("  Batch 1 completed (1 embeddings)")
+        logger.info("All batches completed (1 total embeddings)")
+
+        # Extract embedding
+        embedding_data = embedding_response.json()
+        if "data" in embedding_data and len(embedding_data["data"]) > 0:
+            query_embedding = np.array(
+                embedding_data["data"][0]["embedding"], dtype=np.float32
+            )
+        elif "embeddings" in embedding_data and len(embedding_data["embeddings"]) > 0:
+            query_embedding = np.array(
+                embedding_data["embeddings"][0], dtype=np.float32
+            )
+        else:
+            raise ValueError("Unexpected embedding response format")
 
         # Normalize embedding
         norm = np.linalg.norm(query_embedding)
         if norm > 0:
             query_embedding = query_embedding / norm
 
+        logger.info("Generated embeddings: shape=(1, %d)", len(query_embedding))
+
         # Step 2: Similarity search in FAISS
+        logger.info("Performing FAISS similarity search...")
         query_vector = query_embedding.reshape(1, -1)
         similarities, indices = index_loader.index.search(query_vector, request.top_k)
 
         # Flatten results
         similarities = similarities[0]
         indices = indices[0]
+
+        # Count candidates (excluding -1 indices)
+        num_candidates = len([idx for idx in indices if idx != -1])
 
         # Step 3: Filter by threshold and format results
         results = []
@@ -252,15 +273,23 @@ async def query_rag(request: QueryRequest):
             results.append(result)
 
         # Step 4: Take top-N results
+        num_filtered = len(results)
         results = results[: request.top_n]
+        num_returned = len(results)
 
         search_time_ms = (time.time() - start_time) * 1000
+
+        # Log query completion
+        logger.info("Query complete in %.2fms", search_time_ms)
+        logger.info("  Retrieved: %d candidates", num_candidates)
+        logger.info("  Filtered: %d above threshold", num_filtered)
+        logger.info("  Returned: %d results", num_returned)
 
         return QueryResponse(
             query=request.query,
             results=results,
             metadata={
-                "num_results": len(results),
+                "num_results": num_returned,
                 "search_time_ms": search_time_ms,
                 "top_k": request.top_k,
                 "top_n": request.top_n,
@@ -269,13 +298,14 @@ async def query_rag(request: QueryRequest):
         )
 
     except Exception as e:
+        logger.error("Error processing query: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 
 @app.post("/rag/reload")
 async def reload_index():
     """
-    Reload the index from PostgreSQL.
+    Reload the index from MinIO.
 
     Useful for updating the index without restarting the service.
     """
