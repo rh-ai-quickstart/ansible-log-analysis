@@ -252,8 +252,9 @@ services:
       - "8002:8002"
     environment:
       # MinIO configuration (for RAG index storage)
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio}
-      - MINIO_PORT=${MINIO_PORT:-9000}
+      # Note: Inside Docker, use 'minio' service name, not 'localhost'
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
       - RAG_BUCKET_NAME=${RAG_BUCKET_NAME:-rag-index}

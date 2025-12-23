@@ -37,8 +37,8 @@ help: ## Show this help message
 	@echo "📚 RAG Setup:"
 	@echo "  1. Place PDF files in data/knowledge_base/"
 	@echo "  2. Start services: 'make start' (includes RAG service)"
-	@echo "  3. Run 'make run-whole-training-pipeline' to build RAG embeddings in PostgreSQL"
-	@echo "  4. RAG service will automatically load embeddings when available"
+	@echo "  3. Run 'make run-whole-training-pipeline' to build RAG index and save to MinIO"
+	@echo "  4. RAG service will automatically load index from MinIO when ready"
 	@echo "  5. Ensure RAG_ENABLED=true and RAG_SERVICE_URL=http://alm-rag:8002 in .env file"
 	@echo ""
 
@@ -301,7 +301,7 @@ run-whole-training-pipeline: ## 🔍 Run whole training pipeline (builds RAG ind
 		echo "⚠️  WARNING: No PDF files found in data/knowledge_base/"; \
 		echo "   RAG index will not be created. Add PDF files and run again."; \
 	fi
-	@( cd ../.. && uv run init_pipeline.py )
+	@( cd ../.. && uv run --index-strategy unsafe-best-match init_pipeline.py )
 
 # Add new target to check RAG status
 rag-status: ## 📊 Check RAG service and index status
