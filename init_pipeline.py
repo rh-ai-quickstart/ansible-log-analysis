@@ -56,8 +56,7 @@ async def build_rag_index():
     from alm.config import config
     from alm.rag.ingest_and_chunk import AnsibleErrorParser
     from alm.rag.embed_and_index import AnsibleErrorEmbedder
-    from minio import Minio
-    import json
+    from alm.utils.minio import check_rag_index_exists, get_rag_index_status
 
     # Check if RAG is enabled (consistent with rag_handler.py)
     rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
@@ -69,43 +68,22 @@ async def build_rag_index():
         return
 
     # Check if index already exists in MinIO (skip rebuild for faster upgrades)
-    # Use defaults for local development (when running outside Docker)
     bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
-    minio_endpoint = os.getenv("MINIO_ENDPOINT", "localhost")
-    minio_port = os.getenv("MINIO_PORT", "9000")
-    minio_access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-    minio_secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-
-    if all([minio_endpoint, minio_port, minio_access_key, minio_secret_key]):
-        try:
-            minio_client = Minio(
-                endpoint=f"{minio_endpoint}:{minio_port}",
-                access_key=minio_access_key,
-                secret_key=minio_secret_key,
-                secure=False,
+    try:
+        if check_rag_index_exists(bucket_name):
+            status = get_rag_index_status(bucket_name)
+            total_errors = status.get("total_errors", 0) if status else 0
+            print(
+                f"✓ Found existing RAG index in MinIO (status: READY, {total_errors} errors), skipping rebuild"
             )
-
-            # Check if LATEST.json exists and status is READY
-            if minio_client.bucket_exists(bucket_name):
-                try:
-                    response = minio_client.get_object(bucket_name, "LATEST.json")
-                    pointer = json.loads(response.read().decode())
-                    if pointer.get("status") == "READY":
-                        total_errors = pointer.get("total_errors", 0)
-                        print(
-                            f"✓ Found existing RAG index in MinIO (status: READY, {total_errors} errors), skipping rebuild"
-                        )
-                        print(
-                            "  To force rebuild, delete index from MinIO or set RAG_FORCE_REBUILD=true"
-                        )
-                        if os.getenv("RAG_FORCE_REBUILD", "false").lower() != "true":
-                            return
-                except Exception:
-                    # LATEST.json doesn't exist or can't be read, proceed with build
-                    pass
-        except Exception as e:
-            print(f"⚠ Could not check MinIO: {e}")
-            print("  Proceeding with index build...")
+            print(
+                "  To force rebuild, delete index from MinIO or set RAG_FORCE_REBUILD=true"
+            )
+            if os.getenv("RAG_FORCE_REBUILD", "false").lower() != "true":
+                return
+    except Exception as e:
+        print(f"⚠ Could not check MinIO: {e}")
+        print("  Proceeding with index build...")
 
     print("\n" + "=" * 70)
     print("BUILDING RAG INDEX FROM KNOWLEDGE BASE")
@@ -174,9 +152,16 @@ async def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 300):
     """
     Wait for RAG service to be ready before proceeding.
 
+    This function BLOCKS until the RAG service is ready. If the service
+    does not become ready within max_wait_time, it raises an exception
+    to fail the init job.
+
     Args:
         rag_service_url: URL of the RAG service (e.g., http://alm-rag:8002)
         max_wait_time: Maximum time to wait in seconds (default: 5 minutes)
+
+    Raises:
+        TimeoutError: If RAG service does not become ready within max_wait_time
     """
     # Check if RAG is enabled
     rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
@@ -202,7 +187,7 @@ async def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 300):
                         data = response.json()
                         index_size = data.get("index_size", 0)
                         print(f"✓ RAG service is ready (index size: {index_size})")
-                        return
+                        return  # Success - service is ready
                     except (ValueError, TypeError):
                         # Invalid JSON response - treat as not ready
                         print(
@@ -228,12 +213,13 @@ async def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 300):
             await asyncio.sleep(check_interval)
             elapsed += check_interval
 
-        # Timeout reached
-        print(
-            f"\n⚠ WARNING: RAG service did not become ready within {max_wait_time} seconds"
+        # Timeout reached - FAIL the init job
+        error_msg = (
+            f"RAG service did not become ready within {max_wait_time} seconds. "
+            f"Init job cannot proceed without RAG service."
         )
-        print("  The training pipeline will proceed, but RAG queries may fail")
-        print("  This is expected if the RAG service is still starting up")
+        print(f"\n✗ ERROR: {error_msg}")
+        raise TimeoutError(error_msg)
 
 
 async def main():

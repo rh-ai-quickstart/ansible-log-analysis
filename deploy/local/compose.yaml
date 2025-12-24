@@ -127,7 +127,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: pgvector/pgvector:pg15  # PostgreSQL with pgvector extension
+    image: postgres:15  # PostgreSQL with pgvector extension
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password

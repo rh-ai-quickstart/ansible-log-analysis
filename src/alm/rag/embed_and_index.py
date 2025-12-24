@@ -28,7 +28,6 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 import faiss
-from minio import Minio
 
 from alm.config import config
 from alm.utils.logger import get_logger
@@ -588,33 +587,18 @@ class AnsibleErrorEmbedder:
         if not self.error_store:
             raise ValueError("Error store must be populated before saving to MinIO")
 
-        # Get MinIO config from environment
-        # Use defaults for local development (when running outside Docker)
-        endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT", "localhost")
-        port = minio_port or os.getenv("MINIO_PORT", "9000")
-        access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-        secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY", "minioadmin")
-
-        if not all([endpoint, port, access_key, secret_key]):
-            raise ValueError(
-                "Missing required MinIO environment variables: "
-                "MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY"
-            )
-
         logger.info("=" * 60)
         logger.info("SAVING RAG INDEX TO MINIO")
         logger.info("=" * 60)
 
-        minio_client = Minio(
-            endpoint=f"{endpoint}:{port}",
-            access_key=access_key,
-            secret_key=secret_key,
-            secure=False,  # Use HTTP for internal OpenShift services
+        from alm.utils.minio import get_minio_client, ensure_bucket_exists
+
+        minio_client = get_minio_client(
+            minio_endpoint, minio_port, minio_access_key, minio_secret_key
         )
 
         # Ensure bucket exists
-        if not minio_client.bucket_exists(bucket_name):
-            minio_client.make_bucket(bucket_name)
+        if ensure_bucket_exists(minio_client, bucket_name):
             logger.info(f"Created MinIO bucket: {bucket_name}")
 
         # Step 1: Set BUILDING status
