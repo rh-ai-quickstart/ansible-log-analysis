@@ -107,10 +107,6 @@ spec:
           volumeMounts:
             - name: init-sync
               mountPath: /init-sync
-          {{- if .Values.rag.enabled }}
-            - name: rag-data
-              mountPath: {{ .Values.rag.pvcMountPath }}
-          {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -133,11 +129,6 @@ spec:
       volumes:
         - name: init-sync
           emptyDir: {}
-      {{- if .Values.rag.enabled }}
-        - name: rag-data
-          persistentVolumeClaim:
-            claimName: {{ include "backend.fullname" . }}-rag-data
-      {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

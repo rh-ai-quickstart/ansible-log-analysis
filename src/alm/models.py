@@ -86,3 +86,7 @@ class LogEntry(BaseModel):
         if isinstance(v, datetime):
             return v.isoformat()
         return v
+
+
+# RAG embeddings are now stored in MinIO, not PostgreSQL
+# The RAGEmbedding table has been removed in favor of MinIO artifact storage

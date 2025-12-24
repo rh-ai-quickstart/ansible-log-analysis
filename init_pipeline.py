@@ -3,96 +3,91 @@ from alm.pipeline.offline import training_pipeline
 from alm.utils.phoenix import register_phoenix
 import os
 import glob
-import shutil
 from pathlib import Path
+import httpx
 
 
 def setup_data_directories():
     """
-    Setup data directory structure in PVC mount path.
-    Creates necessary directories and copies PDFs from image to PVC if needed.
+    Setup data directory structure.
+    Knowledge base PDFs should be baked into the container image at /app/data/knowledge_base.
     """
-    from src.alm.config import config
+    from alm.config import config
 
     print("\n" + "=" * 70)
     print("SETTING UP DATA DIRECTORY STRUCTURE")
     print("=" * 70)
 
-    # Get paths from config (uses DATA_DIR and KNOWLEDGE_BASE_DIR env vars)
+    # Get paths from config (uses DATA_DIR env var)
     data_dir = Path(config.storage.data_dir)
-    knowledge_base_dir = Path(config.storage.knowledge_base_dir)
     logs_dir = data_dir / "logs" / "failed"
 
-    # Create necessary directories
+    # Create necessary directories (for logs, etc.)
     print("Creating directories...")
     data_dir.mkdir(parents=True, exist_ok=True)
-    knowledge_base_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"  ✓ {data_dir}")
-    print(f"  ✓ {knowledge_base_dir}")
     print(f"  ✓ {logs_dir}")
 
-    # Copy PDFs from image to PVC if PVC knowledge_base is empty
-    image_kb_dir = Path("/app/data/knowledge_base")
-    pvc_kb_dir = knowledge_base_dir
-
-    # Check if PVC knowledge_base has any PDFs
-    pvc_pdfs = list(pvc_kb_dir.glob("*.pdf"))
-
-    if not pvc_pdfs:
-        # PVC is empty, copy from image if available
-        if image_kb_dir.exists():
-            image_pdfs = list(image_kb_dir.glob("*.pdf"))
-            if image_pdfs:
-                print(f"\nCopying {len(image_pdfs)} PDF file(s) from image to PVC...")
-                for pdf_path in image_pdfs:
-                    dest_path = pvc_kb_dir / pdf_path.name
-                    try:
-                        shutil.copy2(pdf_path, dest_path)
-                        print(f"  ✓ Copied {pdf_path.name}")
-                    except Exception as e:
-                        print(f"  ✗ Error copying {pdf_path.name}: {e}")
-                print("✓ Knowledge base PDFs copied to PVC")
-            else:
-                print(f"\n⚠ No PDFs found in image at {image_kb_dir}")
+    # Check for knowledge base PDFs
+    # Use config path (works for both local and container)
+    kb_dir = Path(config.storage.knowledge_base_dir)
+    if kb_dir.exists():
+        pdfs = list(kb_dir.glob("*.pdf"))
+        if pdfs:
+            print(f"\n✓ Found {len(pdfs)} PDF file(s) in knowledge base ({kb_dir}):")
+            for pdf in pdfs:
+                print(f"  - {pdf.name}")
         else:
-            print(f"\n⚠ Image knowledge base directory not found at {image_kb_dir}")
+            print(f"\n⚠ No PDF files found in {kb_dir}")
+            print("  Add PDF files to the knowledge base directory to enable RAG")
     else:
-        print(
-            f"\n✓ PVC knowledge base already contains {len(pvc_pdfs)} PDF file(s), skipping copy"
-        )
+        print(f"\n⚠ Knowledge base directory not found at {kb_dir}")
+        print("  Create the directory and add PDF files to enable RAG")
 
     print("=" * 70)
 
 
-def build_rag_index():
+async def build_rag_index():
     """
-    Build RAG index from knowledge base PDFs.
-    This runs during the init job to create the FAISS index and metadata.
+    Build RAG index from knowledge base PDFs and save to MinIO.
+    This runs during the init job to create the FAISS index and save artifacts to MinIO.
     """
-    from src.alm.config import config
-    from src.alm.rag.ingest_and_chunk import AnsibleErrorParser
-    from src.alm.rag.embed_and_index import AnsibleErrorEmbedder
+    from alm.config import config
+    from alm.rag.ingest_and_chunk import AnsibleErrorParser
+    from alm.rag.embed_and_index import AnsibleErrorEmbedder
+    from alm.utils.minio import check_rag_index_exists, get_rag_index_status
 
-    # Check if RAG is enabled
-    rag_enabled = os.getenv("RAG_ENABLED", "true").lower() == "true"
+    # Check if RAG is enabled (consistent with rag_handler.py)
+    rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
+    rag_enabled = rag_enabled_env in ["true", "1", "yes"]
     if not rag_enabled:
-        print("RAG is disabled (RAG_ENABLED=false), skipping RAG index build")
+        print(
+            f"RAG is disabled (RAG_ENABLED={rag_enabled_env}), skipping RAG index build"
+        )
         return
 
-    # Check if index already exists (skip rebuild for faster upgrades)
-    index_path = Path(config.storage.index_path)
-    metadata_path = Path(config.storage.metadata_path)
-
-    if index_path.exists() and metadata_path.exists():
-        print("✓ RAG index already exists, skipping rebuild")
-        print(f"  Index: {index_path}")
-        print(f"  Metadata: {metadata_path}")
-        print("  To force rebuild, delete the PVC or these files")
-        return
+    # Check if index already exists in MinIO (skip rebuild for faster upgrades)
+    bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
+    try:
+        if check_rag_index_exists(bucket_name):
+            status = get_rag_index_status(bucket_name)
+            total_errors = status.get("total_errors", 0) if status else 0
+            print(
+                f"✓ Found existing RAG index in MinIO (status: READY, {total_errors} errors), skipping rebuild"
+            )
+            print(
+                "  To force rebuild, delete index from MinIO or set RAG_FORCE_REBUILD=true"
+            )
+            if os.getenv("RAG_FORCE_REBUILD", "false").lower() != "true":
+                return
+    except Exception as e:
+        print(f"⚠ Could not check MinIO: {e}")
+        print("  Proceeding with index build...")
 
     print("\n" + "=" * 70)
     print("BUILDING RAG INDEX FROM KNOWLEDGE BASE")
+    print("  Storage: MinIO")
     print("=" * 70)
 
     try:
@@ -105,7 +100,8 @@ def build_rag_index():
         embedder = AnsibleErrorEmbedder()
 
         # Find PDFs in knowledge base
-        kb_dir = config.storage.knowledge_base_dir
+        # Use config path (works for both local and container)
+        kb_dir = Path(config.storage.knowledge_base_dir)
         pdf_files = sorted(glob.glob(str(kb_dir / "*.pdf")))
 
         if not pdf_files:
@@ -138,14 +134,11 @@ def build_rag_index():
         print(f"TOTAL: {len(all_chunks)} chunks from {len(pdf_files)} PDFs")
         print(f"{'=' * 70}")
 
-        # Build and save index
-        embedder.ingest_and_index(all_chunks)
-
+        # Build and save index to MinIO
+        await embedder.ingest_and_index_to_minio(all_chunks)
         print("\n" + "=" * 70)
-        print("✓ RAG INDEX BUILD COMPLETE")
+        print("✓ RAG INDEX BUILD COMPLETE (MinIO)")
         print("=" * 70)
-        print(f"  Index: {index_path}")
-        print(f"  Metadata: {metadata_path}")
 
     except Exception as e:
         print(f"\n✗ ERROR building RAG index: {e}")
@@ -153,6 +146,80 @@ def build_rag_index():
         import traceback
 
         traceback.print_exc()
+
+
+async def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 300):
+    """
+    Wait for RAG service to be ready before proceeding.
+
+    This function BLOCKS until the RAG service is ready. If the service
+    does not become ready within max_wait_time, it raises an exception
+    to fail the init job.
+
+    Args:
+        rag_service_url: URL of the RAG service (e.g., http://alm-rag:8002)
+        max_wait_time: Maximum time to wait in seconds (default: 5 minutes)
+
+    Raises:
+        TimeoutError: If RAG service does not become ready within max_wait_time
+    """
+    # Check if RAG is enabled
+    rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
+    rag_enabled = rag_enabled_env in ["true", "1", "yes"]
+    if not rag_enabled:
+        print("RAG is disabled, skipping RAG service wait")
+        return
+
+    print("\n" + "=" * 70)
+    print("WAITING FOR RAG SERVICE TO BE READY")
+    print("=" * 70)
+
+    ready_url = f"{rag_service_url}/ready"
+    elapsed = 0
+    check_interval = 5
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while elapsed < max_wait_time:
+            try:
+                response = await client.get(ready_url)
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        index_size = data.get("index_size", 0)
+                        print(f"✓ RAG service is ready (index size: {index_size})")
+                        return  # Success - service is ready
+                    except (ValueError, TypeError):
+                        # Invalid JSON response - treat as not ready
+                        print(
+                            f"RAG service returned invalid JSON (status: {response.status_code}), waiting..."
+                        )
+                else:
+                    print(
+                        f"RAG service not ready yet (status: {response.status_code}), waiting..."
+                    )
+            except (
+                httpx.RequestError,
+                httpx.HTTPStatusError,
+                ValueError,
+                TypeError,
+            ):
+                if elapsed == 0:
+                    print(
+                        f"RAG service not yet available at {rag_service_url}, waiting..."
+                    )
+                elif elapsed % 30 == 0:  # Print every 30 seconds
+                    print(f"Still waiting for RAG service... (elapsed: {elapsed}s)")
+
+            await asyncio.sleep(check_interval)
+            elapsed += check_interval
+
+        # Timeout reached - FAIL the init job
+        error_msg = (
+            f"RAG service did not become ready within {max_wait_time} seconds. "
+            f"Init job cannot proceed without RAG service."
+        )
+        print(f"\n✗ ERROR: {error_msg}")
+        raise TimeoutError(error_msg)
 
 
 async def main():
@@ -165,7 +232,11 @@ async def main():
     setup_data_directories()
 
     # Step 2: Build RAG index
-    build_rag_index()
+    await build_rag_index()
+
+    # Step 2.5: Wait for RAG service to be ready (if RAG is enabled)
+    rag_service_url = os.getenv("RAG_SERVICE_URL", "http://alm-rag:8002")
+    await wait_for_rag_service(rag_service_url)
 
     # Step 3: Run main pipeline (clustering, summarization, etc.)
     print("\n" + "=" * 70)

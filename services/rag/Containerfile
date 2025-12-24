@@ -1,0 +1,31 @@
+FROM registry.access.redhat.com/ubi8/python-312
+
+USER root
+
+# Install uv pointing to the uv image and coping from there
+# /uv and /uvx are the source files copied from the uv image
+# /bin is the destination
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /bin/
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files (from services/rag/ directory)
+COPY services/rag/pyproject.toml ./
+
+# Install dependencies
+RUN uv sync --no-dev
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+RUN chmod -R +r .
+
+# Copy source code (from services/rag/ directory)
+COPY services/rag/index_loader.py services/rag/main.py .
+
+# Expose port
+EXPOSE 8002
+
+# Default command
+ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+

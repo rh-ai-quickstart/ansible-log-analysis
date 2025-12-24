@@ -118,23 +118,16 @@ services:
       - ../../data/logs/failed:/app/sample-logs:ro,z
     networks:
       - alm
-    # Memory limit for file loading (500 files with events needs ~3-4GB)
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s  # Give time to load 500 files before health checks
+      start_period: 10s
     restart: unless-stopped
 
   postgres:
-    image: postgres:15
+    image: postgres:15  # PostgreSQL with pgvector extension
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
@@ -182,6 +175,7 @@ services:
       - PROD_CORS_ORIGIN=${PROD_CORS_ORIGIN}
       # RAG Configuration
       - RAG_ENABLED=${RAG_ENABLED}
+      - RAG_SERVICE_URL=${RAG_SERVICE_URL:-http://alm-rag:8002}
       - DATA_DIR=${DATA_DIR}
       - KNOWLEDGE_BASE_DIR=${KNOWLEDGE_BASE_DIR}
       - RAG_TOP_K=${RAG_TOP_K}
@@ -203,6 +197,8 @@ services:
         condition: service_healthy
       alm-embedding:
         condition: service_healthy
+      alm-rag:
+        condition: service_started  # RAG service can start before embeddings are ready
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -230,7 +226,7 @@ services:
       retries: 3
 
   alm-embedding:
-    image: quay.io/rh-ai-quickstart/alm-backend:tei-rag-v1
+    image: quay.io/rh-ai-quickstart/alm-rag:tei-rag-v1
     container_name: alm-embedding
     # Entrypoint is already set to text-embeddings-router in the image
     ports:
@@ -253,7 +249,66 @@ services:
     # Note: This service requires significant memory (8Gi recommended)
     # Adjust resources based on your system capabilities
 
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"  # MinIO Console port
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_SERVER_URL=http://minio:9000
+    command: server /data --console-address ":9001"
+    networks:
+      - alm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - minio_data:/data
+
+  alm-rag:
+    build:
+      context: ../..
+      dockerfile: services/rag/Containerfile
+    container_name: alm-rag
+    ports:
+      - "8002:8002"
+    environment:
+      # MinIO configuration (for RAG index storage)
+      # Note: Inside Docker, use 'minio' service name, not 'localhost'
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - RAG_BUCKET_NAME=rag-index
+      # Embedding service
+      - EMBEDDINGS_LLM_URL=http://alm-embedding:8080
+      - RAG_MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
+      - PORT=8002
+    networks:
+      - alm
+    depends_on:
+      alm-embedding:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      # Note: RAG service will wait for index to be ready in MinIO
+      # In local dev, you may need to run init job first to create the index
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s  # Service starts immediately, but index may take time to load
+
 volumes:
   postgres_data:
   aap_mock_data:
   aap_mock_logs:
+  minio_data:

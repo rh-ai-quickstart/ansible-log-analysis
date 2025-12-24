@@ -1,5 +1,5 @@
 # This makefile routes targets to local or helm specific makefiles
-.PHONY: all local helm help
+.PHONY: all local helm help rag-status test-rag
 
 # ifneq (,$(wildcard .env))
 # # ifneq (,$(filter local,$(MAKECMDGOALS)))
@@ -34,3 +34,7 @@ local/%: ## Route local targets to deploy/local/Makefile
 
 cluster/%: ## Route deploy targets to deploy/helm/Makefile
 	@$(MAKE) -C deploy/helm $*
+
+# Convenience targets for common local commands
+rag-status: local/rag-status ## Check RAG service status
+test-rag: local/test-rag ## Test RAG service

@@ -23,11 +23,15 @@ engine = create_async_engine(
 
 # Create tables
 async def init_tables(delete_tables=False):
+    # Now create tables in a separate transaction
     async with engine.begin() as conn:
         if delete_tables:
             logger.info("Starting to delete tables")
             await conn.run_sync(GrafanaAlert.metadata.drop_all)
+
+        # Create all tables
         await conn.run_sync(GrafanaAlert.metadata.create_all)
+        # Note: RAG embeddings are stored in MinIO, not PostgreSQL
 
 
 def get_session():
