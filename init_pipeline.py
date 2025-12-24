@@ -69,11 +69,12 @@ async def build_rag_index():
         return
 
     # Check if index already exists in MinIO (skip rebuild for faster upgrades)
+    # Use defaults for local development (when running outside Docker)
     bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
-    minio_endpoint = os.getenv("MINIO_ENDPOINT")
+    minio_endpoint = os.getenv("MINIO_ENDPOINT", "localhost")
     minio_port = os.getenv("MINIO_PORT", "9000")
-    minio_access_key = os.getenv("MINIO_ACCESS_KEY")
-    minio_secret_key = os.getenv("MINIO_SECRET_KEY")
+    minio_access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    minio_secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
     if all([minio_endpoint, minio_port, minio_access_key, minio_secret_key]):
         try:
