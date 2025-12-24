@@ -589,10 +589,11 @@ class AnsibleErrorEmbedder:
             raise ValueError("Error store must be populated before saving to MinIO")
 
         # Get MinIO config from environment
-        endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT")
+        # Use defaults for local development (when running outside Docker)
+        endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT", "localhost")
         port = minio_port or os.getenv("MINIO_PORT", "9000")
-        access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY")
-        secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY")
+        access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+        secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
         if not all([endpoint, port, access_key, secret_key]):
             raise ValueError(

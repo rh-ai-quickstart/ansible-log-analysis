@@ -228,8 +228,8 @@ services:
       - "9000:9000"
       - "9001:9001"  # MinIO Console port
     environment:
-      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
       - MINIO_SERVER_URL=http://minio:9000
     command: server /data --console-address ":9001"
     networks:
@@ -255,9 +255,9 @@ services:
       # Note: Inside Docker, use 'minio' service name, not 'localhost'
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
-      - RAG_BUCKET_NAME=${RAG_BUCKET_NAME:-rag-index}
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - RAG_BUCKET_NAME=rag-index
       # Embedding service
       - EMBEDDINGS_LLM_URL=http://alm-embedding:8080
       - RAG_MODEL_NAME=nomic-ai/nomic-embed-text-v1.5

@@ -80,10 +80,12 @@ embedding: ## 🤖 Start Embedding Service (TEI)
 	@$(COMPOSE_CMD) -f compose.yaml up -d alm-embedding
 
 rag: ## 🔍 Start RAG Service
+	@echo "   Starting MinIO (required for RAG service)..."
+	@$(COMPOSE_CMD) -f compose.yaml up -d minio
 	@echo "   Starting RAG Service..."
 	@$(COMPOSE_CMD) -f compose.yaml up -d alm-rag
-	@echo "   ⚠️  Note: RAG service will poll PostgreSQL for embeddings"
-	@echo "   It will become ready once embeddings are available (after init job runs)"
+	@echo "   ⚠️  Note: RAG service will poll MinIO for index"
+	@echo "   It will become ready once index is available (after init job runs)"
 
 wait-for-embedding: ## ⏳ Wait for embedding service to be ready (optional, for manual use)
 	@echo "   Waiting for embedding service to be ready (this may take 3-5 minutes for model loading)..."
