@@ -13,7 +13,7 @@ from datetime import datetime
 
 from alm.agents.get_more_context_agent.graph import more_context_agent_graph
 from alm.agents.get_more_context_agent.state import ContextAgentState
-from alm.agents.loki_agent.schemas import LogEntry, LogLabels, LogLevel
+from alm.agents.loki_agent.schemas import LogEntry, LogLabels, DetectedLevel
 
 # from langchain.globals import set_debug
 
@@ -33,7 +33,7 @@ async def test_get_more_context_graph():
 
     log_entry = LogEntry(
         log_labels=LogLabels(
-            detected_level=LogLevel.ERROR,
+            detected_level=DetectedLevel.ERROR,
             filename="/var/log/ansible_logs/failed/job_1461865.txt",
             job="failed_logs",
             service_name="failed_logs",

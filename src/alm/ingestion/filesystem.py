@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from alm.models import GrafanaAlert, LogLabels, LogLevel
+from alm.models import GrafanaAlert, LogLabels, DetectedLevel
 from alm.patterns.ingestion import (
     TESTING_LOG_ERROR,
     TESTING_LOG_FATAL,
@@ -33,7 +33,7 @@ def shrink_long_logs(log: str) -> str:
     return log[:5_000]
 
 
-def grafana_alert_mock(path: str) -> Optional[GrafanaAlert]:
+def load_alert_from_filesystem(path: str) -> Optional[GrafanaAlert]:
     """Mock the Grafana alerting system."""
     with open(path, "r") as file:
         content = file.read()
@@ -58,7 +58,7 @@ def grafana_alert_mock(path: str) -> Optional[GrafanaAlert]:
 
     # Create GrafanaAlert instance with extracted data
     alert = GrafanaAlert(
-        logTimestamp=(
+        timestamp=(
             datetime.strptime(groups.get("timestamp"), "%A %d %B %Y  %H:%M:%S")
             if groups.get("timestamp")
             else datetime.now()
@@ -67,9 +67,9 @@ def grafana_alert_mock(path: str) -> Optional[GrafanaAlert]:
             groups.get("logmessage", "")
         ),  # Full matched text as the log message
         log_labels=LogLabels(
-            detected_level=LogLevel.ERROR
+            detected_level=DetectedLevel.ERROR
             if groups.get("status", "error") == "error"
-            else LogLevel.WARN,
+            else DetectedLevel.WARN,
             filename=Path(path).name,
             job=groups.get("job", "").strip(),
             service_name=groups.get("host", "").strip(),
@@ -87,7 +87,7 @@ def ingest_alerts(directory: str) -> list[GrafanaAlert]:
     for file in os.listdir(directory):
         if file.endswith(".txt"):
             try:
-                alerts.append(grafana_alert_mock(os.path.join(directory, file)))
+                alerts.append(load_alert_from_filesystem(os.path.join(directory, file)))
                 success_count += 1
             except Exception:
                 error_count += 1

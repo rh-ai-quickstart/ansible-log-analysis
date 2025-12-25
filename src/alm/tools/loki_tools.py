@@ -25,7 +25,7 @@ from alm.agents.loki_agent.schemas import (
     DEFAULT_LINE_ABOVE,
     DEFAULT_LIMIT,
     FileLogSchema,
-    LogLevel,
+    DetectedLevel,
     SearchTextSchema,
     LogLinesAboveSchema,
     PlayRecapSchema,
@@ -169,7 +169,7 @@ async def get_logs_by_file_name(
     log_timestamp: Optional[str] = None,
     start_time: str | int = DEFAULT_START_TIME,
     end_time: str = DEFAULT_END_TIME,
-    level: LogLevel | None = None,
+    level: DetectedLevel | None = None,
     limit: int = DEFAULT_LIMIT,
     direction: Literal["backward", "forward"] = DEFAULT_DIRECTION,
 ) -> str:

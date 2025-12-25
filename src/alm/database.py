@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from alm.models import GrafanaAlert
 from alm.agents.state import GrafanaAlertState
-from alm.models import LogEntry
+from alm.models import LogEntry, LogLabels
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -40,17 +40,21 @@ async def get_session_gen() -> Generator[AsyncSession, None, None]:
         yield session
 
 
-def convert_state_to_grafana_alert(state: dict) -> GrafanaAlert:
+def convert_state_to_grafana_alert(state: GrafanaAlertState) -> GrafanaAlert:
     return GrafanaAlert(
-        logTimestamp=datetime.fromisoformat(state["log_entry"].timestamp),
-        logMessage=state["log_entry"].message,
-        logSummary=state["logSummary"],
-        expertClassification=state["expertClassification"],
-        logCluster=state["logCluster"],
-        needMoreContext=state["needMoreContext"],
-        stepByStepSolution=state["stepByStepSolution"],
-        contextForStepByStepSolution=state["contextForStepByStepSolution"],
-        log_labels=state["log_entry"].log_labels,
+        logTimestamp=datetime.strptime(
+            state.log_entry.timestamp, "%A %d %B %Y  %H:%M:%S %z"
+        ).replace(tzinfo=None)
+        if state.log_entry.timestamp
+        else None,
+        logMessage=state.log_entry.message,
+        logSummary=state.logSummary,
+        expertClassification=state.expertClassification,
+        logCluster=state.logCluster,
+        needMoreContext=state.needMoreContext,
+        stepByStepSolution=state.stepByStepSolution,
+        contextForStepByStepSolution=state.contextForStepByStepSolution,
+        log_labels=state.log_entry.log_labels.model_dump(mode="json"),
     )
 
 
@@ -59,8 +63,10 @@ def convert_grafana_alert_to_grafana_alert_state(
 ) -> GrafanaAlertState:
     return GrafanaAlertState(
         log_entry=LogEntry(
-            timestamp=alert.logTimestamp.isoformat(),
-            log_labels=alert.log_labels,
+            timestamp=alert.logTimestamp.strftime("%A %d %B %Y  %H:%M:%S %z")
+            if alert.logTimestamp
+            else None,
+            log_labels=LogLabels(**alert.log_labels),
             message=alert.logMessage,
         ),
         logSummary=alert.logSummary,

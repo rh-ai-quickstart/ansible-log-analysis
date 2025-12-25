@@ -14,7 +14,7 @@ from alm.agents.loki_agent.constants import (
     LOG_CONTEXT_SEPARATOR_WIDTH,
     NANOSECONDS_PER_SECOND,
 )
-from alm.models import LogEntry, LogLevel
+from alm.models import LogEntry, DetectedLevel
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -130,7 +130,7 @@ def build_log_context(logs: List["LogEntry"]) -> str:
             log_level = (
                 log.log_labels.detected_level.value.upper()
                 if log.log_labels.detected_level
-                else LogLevel.UNKNOWN.value.upper()
+                else DetectedLevel.UNKNOWN.value.upper()
             )
             # Abandon timestamp since it's the generated timestamp (ingested timestamp) and used only for loki query,
             # the real timestamp is in the log message itself

@@ -82,7 +82,7 @@ async def loki_execute_query_node(
             "expertClassification": state.expert_classification,
             "logMessage": log_message,
             "logLabels": log_labels,
-            "logTimestamp": log_timestamp,
+            "timestamp": log_timestamp,
         }
 
         # Execute the query

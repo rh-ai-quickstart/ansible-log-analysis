@@ -1,15 +1,16 @@
 import asyncio
 import time
+from datetime import datetime
 from typing import List, Dict, Tuple
-from alm.database import convert_grafana_alert_to_grafana_alert_state, get_session
-from alm.alert_mocker import ingest_alerts
+from alm.database import get_session
 from alm.agents.graph import graph_without_clustering
 from alm.agents.node import train_embed_and_cluster_logs
-from alm.models import GrafanaAlert
-from sqlmodel import select
+from alm.models import GrafanaAlert, LogEntry
 from alm.database import convert_state_to_grafana_alert
 from alm.database import init_tables
 from alm.utils.logger import get_logger
+from alm.ingestion.loki_database import LokiDataLoader
+from alm.agents.state import GrafanaAlertState
 
 logger = get_logger(__name__)
 
@@ -22,67 +23,67 @@ async def _add_or_update_alert(alert):
 
 
 def cluster_logs(
-    alerts: List[GrafanaAlert],
-) -> Tuple[List[str], Dict[str, GrafanaAlert]]:
+    log_entries: List[LogEntry],
+) -> Tuple[List[str], Dict[str, LogEntry]]:
     """Cluster logs and return unique alerts per cluster."""
     cluster_labels = train_embed_and_cluster_logs(
-        [alert.logMessage for alert in alerts]
+        [log_entry.message for log_entry in log_entries]
     )
 
-    unique_cluster = {label: alert for alert, label in zip(alerts, cluster_labels)}
+    unique_cluster = {
+        label: log_entry for log_entry, label in zip(log_entries, cluster_labels)
+    }
     return cluster_labels, unique_cluster
 
 
-async def load_alerts(load_alerts_from_db):
-    if not load_alerts_from_db:
-        alerts = [
-            alert for alert in ingest_alerts("data/logs/failed") if alert is not None
-        ]
-        logger.info("alerts ingested %d", len(alerts))
-    else:
-        async with get_session() as db:
-            alerts = await db.exec(select(GrafanaAlert))
-            alerts = alerts.all()
-            logger.info("alerts loaded from db %d", len(alerts))
-    return alerts
+async def load_log_entries():
+    log_entries = await LokiDataLoader().load_and_transform()
+    logger.info("log entries loaded from loki %d", len(log_entries))
+    return log_entries
 
 
-async def _process_alert(label: str, alert: GrafanaAlert) -> Tuple[str, GrafanaAlert]:
+async def _process_alert(label: str, log_entry: LogEntry) -> Tuple[str, GrafanaAlert]:
     """Process a single alert through the graph without clustering and return (label, result)."""
-    state = convert_grafana_alert_to_grafana_alert_state(alert)
+    state = GrafanaAlertState(log_entry=log_entry, logCluster=label)
     result_state = await graph_without_clustering().ainvoke(state)
-    return label, convert_state_to_grafana_alert(result_state)
+    return label, convert_state_to_grafana_alert(GrafanaAlertState(**result_state))
 
 
-async def training_pipeline(restart_db=True, load_alerts_from_db=False):
+async def training_pipeline(restart_db=True):
     if restart_db:
         await init_tables(delete_tables=True)
 
-    # Load alerts
-    alerts = await load_alerts(load_alerts_from_db=load_alerts_from_db)
+    # Load log entries
+    log_entries = await load_log_entries()
 
     # Cluster logs
-    cluster_labels, unique_cluster = cluster_logs(alerts)
+    cluster_labels, unique_cluster = cluster_logs(log_entries)
 
     # Process all unique cluster alerts in parallel
     results = await asyncio.gather(
-        *[_process_alert(label, alert) for label, alert in unique_cluster.items()]
+        *[
+            _process_alert(label, log_entry)
+            for label, log_entry in unique_cluster.items()
+        ]
     )
     updated_alerts: Dict[str, GrafanaAlert] = dict(results)
 
+    alerts = []
     # update alerts fields by label
-    for label, alert in zip(cluster_labels, alerts):
+    for label, log_entry in zip(cluster_labels, log_entries):
         candidate_alert = updated_alerts[label]
         # All the intermediate steps of the agent
-        alert.logSummary = candidate_alert.logSummary
-        alert.expertClassification = candidate_alert.expertClassification
-        alert.logCluster = str(label)
-        alert.needMoreContext = candidate_alert.needMoreContext
-        alert.stepByStepSolution = candidate_alert.stepByStepSolution
-        alert.contextForStepByStepSolution = (
-            candidate_alert.contextForStepByStepSolution
+        alert = GrafanaAlert(**candidate_alert.model_dump())
+        alert.logTimestamp = (
+            datetime.strptime(log_entry.timestamp, "%A %d %B %Y  %H:%M:%S %z").replace(
+                tzinfo=None
+            )
+            if log_entry.timestamp
+            else None
         )
-
+        alert.logMessage = log_entry.message
+        alert.log_labels = log_entry.log_labels.model_dump(mode="json")
+        alerts.append(alert)
     # update database
     start_time = time.time()
     await asyncio.gather(*[_add_or_update_alert(alert) for alert in alerts])

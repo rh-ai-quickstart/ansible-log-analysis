@@ -5,10 +5,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from alm.database import get_session_gen
 from alm.models import GrafanaAlert
 from alm.agents.graph import inference_graph
-from alm.models import LogEntry, LogLabels, LogLevel
-from typing import Optional
+from alm.models import LogEntry, LogLabels, DetectedLevel
+from alm.models import LogStatus, LogType
 from datetime import datetime
 from alm.database import convert_state_to_grafana_alert
+from alm.agents.state import GrafanaAlertState
 
 router = APIRouter(prefix="/grafana-alert", tags=["grafana-alert"])
 
@@ -99,23 +100,30 @@ async def get_grafana_alerts_by_expert_class_and_log_cluster(
 @router.post("/", status_code=status.HTTP_202_ACCEPTED, summary="Post log alert")
 async def post_log_alert(
     log_alert: str,
-    detected_level: Optional[LogLevel] = None,
-    filename: Optional[str] = None,
-    job: Optional[str] = None,
-    service_name: Optional[str] = None,
-    timestamp: Optional[datetime] = datetime.now().isoformat(),
+    detected_level: DetectedLevel = DetectedLevel.UNKNOWN,
+    filename: str = "Unknown filename",
+    job: str = "Unknown job",
+    service_name: str = "Unknown service name",
+    timestamp: datetime = Depends(lambda: datetime.now()),
+    status: LogStatus = LogStatus.OK,
+    log_type: LogType = LogType.OTHER,
     session: AsyncSession = Depends(get_session_gen),
 ) -> GrafanaAlert:
     log_labels = LogLabels(
         detected_level=detected_level,
         filename=filename,
         job=job,
+        database_timestamp=timestamp,  # TODO think about it
         service_name=service_name,
+        status=status,
+        log_type=log_type,
     )
-    log_entry = LogEntry(timestamp=timestamp, log_labels=log_labels, message=log_alert)
-    graph_result = await inference_graph().ainvoke({"log_entry": log_entry})
+    log_entry = LogEntry(
+        timestamp=timestamp.isoformat(), log_labels=log_labels, message=log_alert
+    )
+    state = await inference_graph().ainvoke({"log_entry": log_entry})
 
-    grafana_alert = convert_state_to_grafana_alert(graph_result)
+    grafana_alert = convert_state_to_grafana_alert(GrafanaAlertState(**state))
 
     session.add(grafana_alert)
     await session.commit()

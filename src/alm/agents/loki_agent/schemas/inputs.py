@@ -13,7 +13,7 @@ from alm.agents.loki_agent.constants import (
     DEFAULT_LINE_ABOVE,
     DEFAULT_START_TIME,
 )
-from alm.models import LogLevel
+from alm.models import DetectedLevel
 
 
 class FileLogSchema(BaseModel):
@@ -34,7 +34,7 @@ class FileLogSchema(BaseModel):
         default=DEFAULT_END_TIME,
         description="Relative offset from log_timestamp (e.g., '-5m'), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
     )
-    level: LogLevel | None = Field(
+    level: DetectedLevel | None = Field(
         default=None, description="Log level filter: error, warn, info, debug, unknown"
     )
     limit: int = Field(

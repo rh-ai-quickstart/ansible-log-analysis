@@ -1,4 +1,5 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from sklearn.base import ClusterMixin
 import os
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN, MeanShift, AgglomerativeClustering
@@ -136,7 +137,7 @@ def _embed_logs(logs: List[str]):
     return embeddings
 
 
-def _cluster_logs(embeddings: np.ndarray):
+def _cluster_logs(embeddings: np.ndarray) -> Tuple[ClusterMixin, np.ndarray]:
     algorithm = os.getenv("CLUSTERING_ALGORITHM")
     if algorithm.lower() == "dbscan":
         # DBSCAN - Good for finding clusters of varying shapes and handling noise
@@ -187,7 +188,7 @@ def _handle_outlaier_cluster(cluster_labels: np.ndarray):
 
     # Find indices where cluster_labels is -1 (outliers/noise points)
     outlier_indices = np.where(cluster_labels == -1)[0]
-
+    logger.debug(f"number of outliers: {len(outlier_indices)}")
     # Assign each outlier its own unique cluster ID
     next_cluster_id = max_cluster + 1
     for idx in outlier_indices:
@@ -202,7 +203,7 @@ def _handle_outlaier_cluster(cluster_labels: np.ndarray):
 def train_embed_and_cluster_logs(
     logs: List[str],
     save_cluster_model: bool = True,
-):
+) -> List[str]:
     """
     Cluster log summaries using sentence embeddings and various clustering algorithms.
 
@@ -232,4 +233,4 @@ def train_embed_and_cluster_logs(
         else:
             joblib.dump(cluster_model, os.getenv("TMP_CLUSTER_MODEL_PATH"))
 
-    return cluster_labels.tolist()
+    return cluster_labels.astype(str).tolist()
