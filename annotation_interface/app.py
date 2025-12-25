@@ -5,12 +5,20 @@ Custom Data Annotation Interface for Ansible Log Error Annotations
 
 import gradio as gr
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Tuple
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 import psycopg2
+
+# Configure logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 
 
 class DataAnnotationApp:
@@ -41,6 +49,7 @@ class DataAnnotationApp:
 
     def load_data(self):
         """Load the pipeline output data from PostgreSQL."""
+        logger.debug(f"Loading data from table: {self.table_name}")
         try:
             with Session(self.engine) as session:
                 # Use raw SQL to query the table dynamically
@@ -94,17 +103,19 @@ class DataAnnotationApp:
                 # Initialize data with all entries
                 self.data = self.all_data.copy()
 
-                print(
+                logger.info(
                     f"Loaded {len(self.all_data)} data entries from table '{self.table_name}'"
                 )
         except psycopg2.errors.UndefinedTable as _:
-            print(
-                f"Table '{self.table_name}' not initiated. Make sure the data ingested into the database"
+            logger.warning(
+                f"Table '{self.table_name}' not initiated. Make sure the data is ingested into the database"
             )
             self.all_data = []
             self.data = []
         except Exception as e:
-            print(f"Error loading data from database table '{self.table_name}': {e}")
+            logger.error(
+                f"Error loading data from database table '{self.table_name}': {e}"
+            )
             self.all_data = []
             self.data = []
 
@@ -117,7 +128,7 @@ class DataAnnotationApp:
             else:
                 self.feedback_data = []
         except Exception as e:
-            print(f"Error loading feedback: {e}")
+            logger.error(f"Error loading feedback: {e}")
             self.feedback_data = []
 
     def toggle_cluster_sampling(
@@ -140,13 +151,15 @@ class DataAnnotationApp:
                     cluster_samples[cluster_id] = entry
 
             self.data = list(cluster_samples.values())
-            print(
-                f"Cluster sampling enabled: Showing {len(self.data)} samples from {len(self.all_data)} total entries"
+            logger.info(
+                f"Cluster sampling enabled: showing {len(self.data)} samples from {len(self.all_data)} total entries"
             )
         else:
             # Show all data
             self.data = self.all_data.copy()
-            print(f"Cluster sampling disabled: Showing all {len(self.data)} entries")
+            logger.info(
+                f"Cluster sampling disabled: showing all {len(self.data)} entries"
+            )
 
         # Reset to first entry
         self.current_index = 0
@@ -163,9 +176,11 @@ class DataAnnotationApp:
     ) -> str:
         """Save feedback, golden solution, expected behavior, and context info for current data entry."""
         if not self.data:
+            logger.debug("save_feedback called with no data available")
             return "No data available"
 
         current_entry = self.data[self.current_index]
+        logger.debug(f"Saving feedback for entry index {self.current_index}")
 
         # Create feedback entry
         feedback_entry = {
@@ -207,8 +222,12 @@ class DataAnnotationApp:
         try:
             with open(self.feedback_file, "w") as f:
                 json.dump(self.feedback_data, f, indent=2)
+            logger.info(
+                f"Feedback saved for entry {self.current_index + 1} (total: {len(self.feedback_data)} entries)"
+            )
             return f"Feedback saved for entry {self.current_index + 1}"
         except Exception as e:
+            logger.error(f"Failed to save feedback: {e}")
             return f"Error saving feedback: {e}"
 
     def get_current_entry(
