@@ -306,21 +306,38 @@ status: ## 📊 Show status of all services
 		echo "   🐍  Phoenix: Stopped - http://localhost:6006"; \
 	fi
 
-run-whole-training-pipeline: ## 🔍 Run whole training pipeline (builds RAG index)
+run-whole-training-pipeline: ## 🔍 Run whole training pipeline (builds RAG index and runs backend init)
 	@echo "🔍 Running whole training pipeline..."
+	@echo "📚 This will build the RAG index from PDFs in data/knowledge_base/ and run backend initialization"
+	@if [ ! -d "../../data/knowledge_base" ] || [ -z "$$(ls -A ../../data/knowledge_base/*.pdf 2>/dev/null)" ]; then \
+		echo "⚠️  WARNING: No PDF files found in data/knowledge_base/"; \
+		echo "   RAG index will not be created. Add PDF files and run again."; \
+	fi
+	@echo "📦 Step 1: Building RAG index..."
+	@( cd ../.. && uv run --index-strategy unsafe-best-match rag_init_pipeline.py )
+	@echo "📦 Step 2: Running backend initialization..."
+	@( cd ../.. && uv run --index-strategy unsafe-best-match backend_init_pipeline.py )
+
+run-rag-init: ## 🔍 Run RAG initialization only (builds RAG index)
+	@echo "🔍 Running RAG initialization..."
 	@echo "📚 This will build the RAG index from PDFs in data/knowledge_base/"
 	@if [ ! -d "../../data/knowledge_base" ] || [ -z "$$(ls -A ../../data/knowledge_base/*.pdf 2>/dev/null)" ]; then \
 		echo "⚠️  WARNING: No PDF files found in data/knowledge_base/"; \
 		echo "   RAG index will not be created. Add PDF files and run again."; \
 	fi
-	@( cd ../.. && uv run --index-strategy unsafe-best-match init_pipeline.py )
+	@( cd ../.. && uv run --index-strategy unsafe-best-match rag_init_pipeline.py )
+
+run-backend-init: ## 🔍 Run backend initialization only (training pipeline)
+	@echo "🔍 Running backend initialization..."
+	@echo "📚 This will run the training pipeline (clustering, summarization, etc.)"
+	@( cd ../.. && uv run --index-strategy unsafe-best-match backend_init_pipeline.py )
 
 # Add new target to check RAG status
 rag-status: ## 📊 Check RAG service and index status
 	@echo "📊 RAG Service Status:"
 	@if curl -s -f http://localhost:8002/health >/dev/null 2>&1; then \
 		echo "   ✅ RAG service is running"; \
-		if curl -s -f http://localhost:8002/ready >/dev/null 2>&1; then \
+			if curl -s -f http://localhost:8002/ready >/dev/null 2>&1; then \
 			index_size=$$(curl -s http://localhost:8002/ready | grep -o '"index_size":[0-9]*' | grep -o '[0-9]*' || echo "unknown"); \
 			echo "   ✅ RAG index is loaded ($$index_size embeddings)"; \
 		else \

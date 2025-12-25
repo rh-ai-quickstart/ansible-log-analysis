@@ -1,36 +1,30 @@
 import asyncio
-from alm.pipeline.offline import training_pipeline
-from alm.utils.phoenix import register_phoenix
 import os
 import glob
 from pathlib import Path
-import httpx
+from alm.utils.job_monitor import monitor_other_job_async
 
 
-def setup_data_directories():
+def setup_rag_directories():
     """
-    Setup data directory structure.
-    Knowledge base PDFs should be baked into the container image at /app/data/knowledge_base.
+    Setup RAG data directory structure.
+    Creates the directory needed for temporary index storage before uploading to MinIO.
     """
     from alm.config import config
 
     print("\n" + "=" * 70)
-    print("SETTING UP DATA DIRECTORY STRUCTURE")
+    print("SETTING UP RAG DATA DIRECTORY STRUCTURE")
     print("=" * 70)
 
     # Get paths from config (uses DATA_DIR env var)
     data_dir = Path(config.storage.data_dir)
-    logs_dir = data_dir / "logs" / "failed"
 
-    # Create necessary directories (for logs, etc.)
+    # Create necessary directories for RAG index building
     print("Creating directories...")
     data_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"  ✓ {data_dir}")
-    print(f"  ✓ {logs_dir}")
 
-    # Check for knowledge base PDFs
-    # Use config path (works for both local and container)
+    # Check for knowledge base PDFs (informational)
     kb_dir = Path(config.storage.knowledge_base_dir)
     if kb_dir.exists():
         pdfs = list(kb_dir.glob("*.pdf"))
@@ -40,10 +34,10 @@ def setup_data_directories():
                 print(f"  - {pdf.name}")
         else:
             print(f"\n⚠ No PDF files found in {kb_dir}")
-            print("  Add PDF files to the knowledge base directory to enable RAG")
+            print("  RAG index will not be created")
     else:
         print(f"\n⚠ Knowledge base directory not found at {kb_dir}")
-        print("  Create the directory and add PDF files to enable RAG")
+        print("  RAG index will not be created")
 
     print("=" * 70)
 
@@ -51,7 +45,7 @@ def setup_data_directories():
 async def build_rag_index():
     """
     Build RAG index from knowledge base PDFs and save to MinIO.
-    This runs during the init job to create the FAISS index and save artifacts to MinIO.
+    This runs during the RAG init job to create the FAISS index and save artifacts to MinIO.
     """
     from alm.config import config
     from alm.rag.ingest_and_chunk import AnsibleErrorParser
@@ -142,113 +136,55 @@ async def build_rag_index():
 
     except Exception as e:
         print(f"\n✗ ERROR building RAG index: {e}")
-        print("  The system will continue without RAG functionality")
         import traceback
 
         traceback.print_exc()
-
-
-async def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 300):
-    """
-    Wait for RAG service to be ready before proceeding.
-
-    This function BLOCKS until the RAG service is ready. If the service
-    does not become ready within max_wait_time, it raises an exception
-    to fail the init job.
-
-    Args:
-        rag_service_url: URL of the RAG service (e.g., http://alm-rag:8002)
-        max_wait_time: Maximum time to wait in seconds (default: 5 minutes)
-
-    Raises:
-        TimeoutError: If RAG service does not become ready within max_wait_time
-    """
-    # Check if RAG is enabled
-    rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
-    rag_enabled = rag_enabled_env in ["true", "1", "yes"]
-    if not rag_enabled:
-        print("RAG is disabled, skipping RAG service wait")
-        return
-
-    print("\n" + "=" * 70)
-    print("WAITING FOR RAG SERVICE TO BE READY")
-    print("=" * 70)
-
-    ready_url = f"{rag_service_url}/ready"
-    elapsed = 0
-    check_interval = 5
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        while elapsed < max_wait_time:
-            try:
-                response = await client.get(ready_url)
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        index_size = data.get("index_size", 0)
-                        print(f"✓ RAG service is ready (index size: {index_size})")
-                        return  # Success - service is ready
-                    except (ValueError, TypeError):
-                        # Invalid JSON response - treat as not ready
-                        print(
-                            f"RAG service returned invalid JSON (status: {response.status_code}), waiting..."
-                        )
-                else:
-                    print(
-                        f"RAG service not ready yet (status: {response.status_code}), waiting..."
-                    )
-            except (
-                httpx.RequestError,
-                httpx.HTTPStatusError,
-                ValueError,
-                TypeError,
-            ):
-                if elapsed == 0:
-                    print(
-                        f"RAG service not yet available at {rag_service_url}, waiting..."
-                    )
-                elif elapsed % 30 == 0:  # Print every 30 seconds
-                    print(f"Still waiting for RAG service... (elapsed: {elapsed}s)")
-
-            await asyncio.sleep(check_interval)
-            elapsed += check_interval
-
-        # Timeout reached - FAIL the init job
-        error_msg = (
-            f"RAG service did not become ready within {max_wait_time} seconds. "
-            f"Init job cannot proceed without RAG service."
-        )
-        print(f"\n✗ ERROR: {error_msg}")
-        raise TimeoutError(error_msg)
+        raise  # Re-raise to fail the job
 
 
 async def main():
     # Setup and initialization
     print("\n" + "=" * 70)
-    print("ANSIBLE LOG MONITOR - INITIALIZATION PIPELINE")
+    print("ANSIBLE LOG MONITOR - RAG INITIALIZATION PIPELINE")
     print("=" * 70)
 
-    # Step 1: Setup data directories (create dirs, copy PDFs if needed)
-    setup_data_directories()
+    # Get job names and namespace for monitoring
+    backend_job_name = os.getenv(
+        "BACKEND_INIT_JOB_NAME", "ansible-log-monitor-backend-init"
+    )
+    namespace = os.getenv("NAMESPACE", os.getenv("POD_NAMESPACE", "default"))
 
-    # Step 2: Build RAG index
-    await build_rag_index()
+    # Start monitoring the backend init job in the background
+    monitor_task = None
+    try:
+        monitor_task = asyncio.create_task(
+            monitor_other_job_async(backend_job_name, namespace, check_interval=30)
+        )
+    except Exception as e:
+        print(f"⚠ Warning: Could not start job monitoring: {e}")
+        print("  Continuing without monitoring...")
 
-    # Step 2.5: Wait for RAG service to be ready (if RAG is enabled)
-    rag_service_url = os.getenv("RAG_SERVICE_URL", "http://alm-rag:8002")
-    await wait_for_rag_service(rag_service_url)
+    try:
+        # Step 1: Setup RAG data directories (create /app/data/rag)
+        setup_rag_directories()
 
-    # Step 3: Run main pipeline (clustering, summarization, etc.)
-    print("\n" + "=" * 70)
-    print("RUNNING MAIN PIPELINE")
-    print("=" * 70)
-    await training_pipeline()
+        # Step 2: Build RAG index and save to MinIO
+        await build_rag_index()
 
-    print("\n" + "=" * 70)
-    print("✓ INITIALIZATION COMPLETE")
-    print("=" * 70)
+        print("\n" + "=" * 70)
+        print("✓ RAG INITIALIZATION COMPLETE")
+        print("  Index saved to MinIO - RAG service will load it on startup")
+        print("=" * 70)
+
+    finally:
+        # Cancel monitoring task
+        if monitor_task:
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
 
 
 if __name__ == "__main__":
-    register_phoenix()
     asyncio.run(main())

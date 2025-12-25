@@ -1,0 +1,44 @@
+FROM registry.access.redhat.com/ubi8/python-312
+
+USER root
+
+# Install uv pointing to the uv image and coping from there
+# /uv and /uvx are the source files copied from the uv image
+# /bin is the destination
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /bin/
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files (minimal RAG init dependencies)
+COPY services/rag/pyproject.rag-init.toml ./pyproject.toml
+
+# Install dependencies (don't install the project itself, we'll run scripts directly)
+RUN uv sync --no-dev --no-install-project --index-strategy unsafe-best-match
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/src:$PYTHONPATH"
+
+RUN chmod -R +r .
+
+# Copy RAG-related source code
+COPY src/alm/rag/ ./src/alm/rag/
+COPY src/alm/utils/ ./src/alm/utils/
+COPY src/alm/config.py ./src/alm/
+COPY rag_init_pipeline.py ./
+
+# Copy knowledge base PDFs (needed to build RAG index)
+COPY data/knowledge_base/ ./data/knowledge_base/
+
+# Create __init__.py files for proper Python imports if they don't exist
+RUN mkdir -p src/alm src/alm/rag src/alm/utils && \
+    touch src/alm/__init__.py src/alm/rag/__init__.py src/alm/utils/__init__.py 2>/dev/null || true
+
+# Create data directories with proper permissions for OpenShift (random UID, group 0)
+RUN mkdir -p /app/data/rag /app/data/knowledge_base && \
+    chgrp -R 0 /app && \
+    chmod -R g=u /app
+
+# Default command
+ENTRYPOINT ["python", "rag_init_pipeline.py"]
+
