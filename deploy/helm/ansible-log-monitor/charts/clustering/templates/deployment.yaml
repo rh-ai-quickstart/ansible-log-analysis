@@ -35,8 +35,19 @@ spec:
             - sh
             - -c
             - |
-              echo "Waiting for {{ .Values.global.servicesNames.backend }}-init job to complete..."
-              oc wait --for=condition=complete --timeout=600s job/{{ .Values.global.servicesNames.backend }}-init
+              echo "Waiting for {{ .Values.global.servicesNames.backend }}-init jobs to complete..."
+              {{- if .Values.global.rag.enabled }}
+              echo "Waiting for {{ .Values.global.servicesNames.backend }}-rag-init job..."
+              oc wait --for=condition=complete --timeout=600s job/{{ .Values.global.servicesNames.backend }}-rag-init -n {{ .Release.Namespace }}
+              if [ $? -eq 0 ]; then
+                echo "{{ .Values.global.servicesNames.backend }}-rag-init job completed successfully!"
+              else
+                echo "{{ .Values.global.servicesNames.backend }}-rag-init job failed or timed out!"
+                exit 1
+              fi
+              {{- end }}
+              echo "Waiting for {{ .Values.global.servicesNames.backend }}-init job..."
+              oc wait --for=condition=complete --timeout=600s job/{{ .Values.global.servicesNames.backend }}-init -n {{ .Release.Namespace }}
               if [ $? -eq 0 ]; then
                 echo "{{ .Values.global.servicesNames.backend }}-init job completed successfully!"
               else

@@ -37,3 +37,7 @@ global:
     ui: "alm-ui"
     embedding: "alm-embedding"
     rag: "alm-rag"
+  
+  # RAG configuration (shared across all charts)
+  rag:
+    enabled: true

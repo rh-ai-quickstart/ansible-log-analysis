@@ -3,8 +3,6 @@ import json
 import io
 from typing import Optional, Dict, Any
 from minio import Minio
-import sklearn
-import joblib
 
 
 def get_minio_client(
@@ -141,9 +139,7 @@ def check_rag_index_exists(
     return status is not None and status.get("status") == "READY"
 
 
-def upload_model_to_minio(
-    model: sklearn.base.BaseEstimator, bucket_name: str, file_name: str
-):
+def upload_model_to_minio(model, bucket_name: str, file_name: str):
     """
     Upload a sklearn model to MinIO.
 
@@ -152,6 +148,9 @@ def upload_model_to_minio(
         bucket_name: MinIO bucket name
         file_name: Name of the file in MinIO
     """
+    # Lazy import to avoid requiring sklearn/joblib for RAG init job
+    import joblib
+
     minio_client = get_minio_client()
     ensure_bucket_exists(
         minio_client, bucket_name

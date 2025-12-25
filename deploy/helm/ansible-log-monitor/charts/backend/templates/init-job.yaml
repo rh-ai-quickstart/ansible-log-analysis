@@ -55,27 +55,6 @@ spec:
                 sleep 3
               done
               echo "Phoenix service is ready!"
-        {{- if .Values.rag.enabled }}
-        - name: wait-for-embedding
-          image: curlimages/curl:latest
-          command:
-            - sh
-            - -c
-            - |
-              echo "Waiting for embedding service to be ready..."
-              EMBEDDING_URL="${EMBEDDINGS_LLM_URL}/health"
-              until curl -f -s "$EMBEDDING_URL" > /dev/null; do
-                echo "Still waiting for embedding service at $EMBEDDING_URL..."
-                sleep 5
-              done
-              echo "Embedding service is ready!"
-          env:
-            - name: EMBEDDINGS_LLM_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ include "backend.fullname" . }}-config
-                  key: EMBEDDINGS_LLM_URL
-        {{- end }}
       containers:
         - name: init-pipeline
           {{- with .Values.securityContext }}
@@ -88,11 +67,19 @@ spec:
             - sh
             - -c
             - |
-              python init_pipeline.py && touch /init-sync/done
-          {{- if .Values.env }}
+              python backend_init_pipeline.py && touch /init-sync/done
           env:
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RAG_INIT_JOB_NAME
+              value: {{ include "backend.fullname" . }}-rag-init
+            {{- if .Values.env }}
             {{- toYaml .Values.env | nindent 12 }}
-          {{- end }}
+            {{- end }}
           envFrom:
           {{- if .Values.config }}
             - configMapRef:
@@ -120,6 +107,15 @@ spec:
               while [ ! -f /init-sync/done ]; do
                 sleep 5
               done
+              echo "Waiting for both init jobs to complete..."
+              {{- if .Values.rag.enabled }}
+              echo "Waiting for RAG init job..."
+              oc wait --for=condition=complete --timeout=600s job/{{ include "backend.fullname" . }}-rag-init -n {{ .Release.Namespace }} || exit 1
+              echo "RAG init job completed successfully!"
+              {{- end }}
+              echo "Waiting for backend init job..."
+              oc wait --for=condition=complete --timeout=600s job/{{ include "backend.fullname" . }}-init -n {{ .Release.Namespace }} || exit 1
+              echo "Backend init job completed successfully!"
               echo "Init complete, scaling deployment to 1 replica..."
               oc scale deployment {{ include "backend.fullname" . }} --replicas=1 -n {{ .Release.Namespace }}
               echo "Deployment scaled successfully!"

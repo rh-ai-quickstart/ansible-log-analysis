@@ -49,7 +49,7 @@ COPY --from=builder /app/pyproject.toml /app/
 # Copy additional data files
 COPY data/knowledge_base/ ./data/knowledge_base/
 COPY data/logs/failed/ ./data/logs/failed/
-COPY init_pipeline.py ./
+COPY backend_init_pipeline.py ./
 
 # Set environment variables
 ENV VIRTUAL_ENV=/app/.venv \
