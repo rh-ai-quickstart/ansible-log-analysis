@@ -37,8 +37,8 @@ scrape_configs:
   - targets:
       - localhost
     labels:
-      # Expected path: /var/log/ansible_logs/<cluster_name>/<job_name>.txt
-      __path__: /var/log/ansible_logs/*/*.txt
+      job: ansible_logs
+      __path__: /var/log/ansible_logs/**/*.txt
 
   pipeline_stages:
     # Stage 1: Multiline Aggregation
@@ -46,16 +46,7 @@ scrape_configs:
         firstline: '^(PLAY\s+\[|TASK\s+\[|RUNNING HANDLER\s+\[|PLAY\s+RECAP\s+\*+|NO MORE HOSTS LEFT\s+\*+|Vault password)'
         max_lines: 2000
 
-    # Stage 2: Extract cluster_name from filename path
-    - regex:
-        source: filename
-        expression: '/var/log/ansible_logs/(?P<cluster_name>[^/]+)/'
-
-    # Stage 3: Promote cluster_name to label
-    - labels:
-        cluster_name: ''
-
-    # Stage 4: Extract markers for each log type (regex only sets field if it matches)
+    # Stage 2: Extract markers for each log type (regex only sets field if it matches)
     - regex:
         expression: '^TASK\s+\[(?P<task_name_marker>[^\]]+)\]'
     - regex:
@@ -67,22 +58,9 @@ scrape_configs:
     - regex:
         expression: '(?P<real_timestamp>\w+ \d{2} \w+ \d{4}  \d{2}:\d{2}:\d{2} [+-]\d{4})'
 
-    # Stage 4: Extract status from TASK entries with override logic
-    # 4a: Extract 'included' status first (lowest priority, different format: "included: path for hostname")
+    # Stage 4: Extract status from TASK entries
     - regex:
-        expression: '(?P<status>included):\s+\S+\s+for\s+(?P<host>\S+)'
-
-    # 4b: Extract standard status occurrence (ok, changed, skipping - overrides included)
-    - regex:
-        expression: '(?P<status>ok|changed|skipping):\s+\[(?P<host>[^\]]+)\]'
-
-    # 4c: Override status if 'failed' or 'fatal' appears anywhere
-    - regex:
-        expression: '(?P<status>failed|fatal):\s+\[(?P<host>[^\]]+)\]'
-
-    # 4d: Override status if "...ignoring" appears at line end
-    - regex:
-        expression: '\.\.\.(?P<status>ignoring)\s*$'
+        expression: '(?P<status>ok|changed|failed|fatal|skipping|included):\s+\[(?P<host>[^\]]+)\]'
 
     # Stage 5: Promote markers to temporary labels (needed for match selectors)
     - labels:
@@ -117,13 +95,18 @@ scrape_configs:
               log_type: 'other'
 
 
-    # Stage 11: Convert log_type, real_timestamp, and status to structured metadata
+    # Stage 9: Add status as label
+    - labels:
+        status: ''
+
+    # Stage 10: Convert log_type and real_timestamp to structured metadata
     - structured_metadata:
         log_type:
         real_timestamp:
-        status:
 
-    # Stage 13: Keep only desired labels (filename and cluster_name)
-    - labelallow:
-        - filename
-        - cluster_name
+    # Stage 11: Drop ALL temporary labels
+    - labeldrop:
+        - task_name_marker
+        - recap_marker
+        - play_name_marker
+        - log_type
