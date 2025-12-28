@@ -189,7 +189,7 @@ class RAGHandler:
             formatted_context = self._format_rag_results(response_data)
 
             metadata = response_data.get("metadata", {})
-            logger.info(
+            logger.debug(
                 "✓ Retrieved %d relevant errors from knowledge base (search time: %.2fms)",
                 metadata.get("num_results", 0),
                 metadata.get("search_time_ms", 0.0),
