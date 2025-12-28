@@ -113,9 +113,7 @@ spec:
               oc wait --for=condition=complete --timeout=600s job/{{ include "backend.fullname" . }}-rag-init -n {{ .Release.Namespace }} || exit 1
               echo "RAG init job completed successfully!"
               {{- end }}
-              echo "Waiting for backend init job..."
-              oc wait --for=condition=complete --timeout=600s job/{{ include "backend.fullname" . }}-init -n {{ .Release.Namespace }} || exit 1
-              echo "Backend init job completed successfully!"
+              echo "Backend init job pipeline completed successfully!"
               echo "Init complete, scaling deployment to 1 replica..."
               oc scale deployment {{ include "backend.fullname" . }} --replicas=1 -n {{ .Release.Namespace }}
               echo "Deployment scaled successfully!"
