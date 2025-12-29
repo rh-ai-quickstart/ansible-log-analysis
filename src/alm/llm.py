@@ -15,7 +15,7 @@ if not API_KEY or not BASE_URL:
         "OpenAI API configuration not found. Please set both OPENAI_API_TOKEN and OPENAI_API_ENDPOINT environment variables."
     )
 
-# from langchain.globals import set_debug
+# from langchain_core.globals import set_debug
 
 # set_debug(True)  # Enables LangChain debug mode globally
 

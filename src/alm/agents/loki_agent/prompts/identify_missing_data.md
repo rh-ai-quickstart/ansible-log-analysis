@@ -14,16 +14,19 @@ Given a log summary, full log content, and log labels information, identify **ON
    - Example: ✓ "Get all timeout errors from the API service in the last hour"
    - Example: ✗ "Get timeout errors AND get deployment logs AND check authentication failures"
 
-2. **Request only LOG DATA** - Only ask for data that exists in log files/streams:
-   - ✓ Application logs, system logs, service logs, error logs
-   - ✓ Pod logs, container logs, operator logs
-   - ✓ Deployment logs, reconciliation logs, audit logs
+2. **Request only KNOWN LOG SOURCES** - Only ask for logs from sources explicitly identified in the Log Labels Information:
+   - ✓ Request logs from the same filename shown in the log labels (different time ranges)
+   - ✓ Request logs from the same service_name shown in the log labels (different time ranges or log levels)
+   - ✓ Request logs from the same job shown in the log labels
+   - ✗ Generic requests like "application logs", "system logs", "deployment logs" without specifying actual known sources
+   - ✗ Logs from services/files/jobs NOT explicitly listed in the Log Labels Information
+   - ✗ Inferring or guessing log sources mentioned in log content (just because a log mentions "service X" doesn't mean service X logs are available)
    - ✗ External metrics (CPU, memory from monitoring systems)
    - ✗ Live system state (current pod status, API responses)
    - ✗ Configuration files or secrets
    - ✗ Database queries or data
 
-   If something was logged with specific log labels, you can request it. If it wasn't logged, don't request it.
+   **Critical Rule**: You can ONLY request logs from sources that are explicitly shown in the Log Labels Information fields (filename, service_name, job). Do NOT make speculative requests for log sources that aren't confirmed to exist in the labels.
 
 ## Context
 
