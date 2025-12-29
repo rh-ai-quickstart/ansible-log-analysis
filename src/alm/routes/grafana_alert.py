@@ -115,13 +115,13 @@ async def post_log_alert(
         detected_level=detected_level,
         filename=filename,
         job=job,
-        database_timestamp=database_timestamp,
-        service_name=service_name,
-        status=status,
         log_type=log_type,
+        service_name=service_name,
+        database_timestamp=database_timestamp,
+        status=status,
     )
     log_entry = LogEntry(
-        timestamp=timestamp.isoformat(),
+        timestamp=timestamp,
         log_labels=log_labels,
         message=proccess_log_inference(log_message),
     )

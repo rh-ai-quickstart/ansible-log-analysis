@@ -106,7 +106,7 @@ class LogLabels(BaseModel):
 class LogEntry(BaseModel):
     """Represents a single log entry from Loki"""
 
-    timestamp: Optional[str] = pydantic.Field(
+    timestamp: Optional[datetime] = pydantic.Field(
         default=None, description="Timestamp of the log"
     )
     log_labels: LogLabels = pydantic.Field(description="Log labels of the log")
@@ -114,7 +114,12 @@ class LogEntry(BaseModel):
 
     @pydantic.field_validator("timestamp", mode="before")
     @classmethod
-    def convert_datetime_to_str(cls, v):
+    def convert_to_datetime(cls, v):
+        """Convert string timestamps to datetime if needed."""
+        if v is None:
+            return None
         if isinstance(v, datetime):
-            return v.isoformat()
+            return v
+        if isinstance(v, str):
+            return datetime.strptime(v, "%A %d %B %Y  %H:%M:%S %z").replace(tzinfo=None)
         return v

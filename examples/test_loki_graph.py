@@ -39,7 +39,7 @@ async def test_get_more_context_graph():
             service_name="failed_logs",
         ),
         message=log_message,
-        timestamp=datetime.now().isoformat(),  # Usually close enough to the target log message
+        timestamp=datetime.now(),
     )
 
     # Create a test state with sample data

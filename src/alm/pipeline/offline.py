@@ -1,6 +1,5 @@
 import asyncio
 import time
-from datetime import datetime
 from typing import List, Dict, Tuple
 from alm.database import get_session
 from alm.agents.graph import graph_without_clustering
@@ -74,13 +73,7 @@ async def training_pipeline(restart_db=True):
         candidate_alert = updated_alerts[label]
         # All the intermediate steps of the agent
         alert = GrafanaAlert(**candidate_alert.model_dump())
-        alert.logTimestamp = (
-            datetime.strptime(log_entry.timestamp, "%A %d %B %Y  %H:%M:%S %z").replace(
-                tzinfo=None
-            )
-            if log_entry.timestamp
-            else None
-        )
+        alert.logTimestamp = log_entry.timestamp
         alert.logMessage = log_entry.message
         alert.log_labels = log_entry.log_labels.model_dump(mode="json")
         alerts.append(alert)

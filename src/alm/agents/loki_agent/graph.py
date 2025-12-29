@@ -30,7 +30,7 @@ async def identify_missing_log_data_node(
     # Get the current state
     log_summary = state.log_summary
     log_labels = state.log_entry.log_labels
-    log_timestamp = state.log_entry.timestamp
+    log_timestamp = str(state.log_entry.timestamp)
     # Get LLM instance
     llm = get_llm()
 
@@ -64,7 +64,7 @@ async def loki_execute_query_node(
 
         # Extract log context for agent creation
         log_message = state.log_entry.message
-        log_timestamp = state.log_entry.timestamp
+        log_timestamp = str(state.log_entry.timestamp)
         log_labels = state.log_entry.log_labels
         file_name = log_labels.filename
 

@@ -119,7 +119,13 @@ class LokiDataLoader(DataLoader):
                 log_line
             ):  # TODO remoe me after filtering it right in the ingestion
                 continue
-            timestamp = labels.get("real_timestamp", None)
+            timestamp = (
+                datetime.strptime(
+                    labels.get("real_timestamp"), "%A %d %B %Y  %H:%M:%S %z"
+                ).replace(tzinfo=None)
+                if labels.get("real_timestamp")
+                else None
+            )
             database_timestamp = datetime.fromtimestamp(
                 int(database_timestamp_str) / 1e9
             )

@@ -297,7 +297,7 @@ async def find_log_timestamp(
 
     # Get the timestamp of the target log line
     target_log = target_result.logs[0]
-    target_timestamp_raw = target_log.timestamp
+    target_timestamp_raw = str(target_log.timestamp)
 
     logger.debug("Target log found with timestamp: %s", target_timestamp_raw)
     return target_timestamp_raw, None
@@ -390,7 +390,7 @@ def merge_loki_streams(streams: List[Dict], direction: str = DEFAULT_DIRECTION) 
             # Yield LogEntry objects
             for entry in values:
                 yield LogEntry(
-                    timestamp=entry[0],
+                    timestamp=timestamp_to_utc_datetime(entry[0]),
                     log_labels=LogLabels(**stream_labels),
                     message=entry[1],
                 )
@@ -402,7 +402,7 @@ def merge_loki_streams(streams: List[Dict], direction: str = DEFAULT_DIRECTION) 
         # heapq.merge expects sorted iterables and merges them efficiently
         merged_logs = heapq.merge(
             *stream_iterators,
-            key=lambda log: float(log.timestamp),  # Sort by timestamp as float
+            key=lambda log: log.timestamp,  # Sort by timestamp (datetime)
         )
 
         # Extend all_logs with this file's merged logs
