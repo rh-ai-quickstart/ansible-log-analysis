@@ -50,3 +50,14 @@ def filter_ingoring(log: str) -> bool:  # TODO remove me when db filtering is wo
     if "...ignoring" in log:
         return True
     return False
+
+
+def pre_proccess_log(log_line: str):
+    return slice_log_message(get_log_message(log_line))
+
+
+def proccess_log_inference(log_message: str):
+    if log_message.startswith("TASK"):
+        return pre_proccess_log(log_message)
+    else:
+        return slice_log_message(log_message)

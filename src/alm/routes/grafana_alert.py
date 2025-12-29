@@ -10,6 +10,7 @@ from alm.models import LogStatus, LogType
 from datetime import datetime
 from alm.database import convert_state_to_grafana_alert
 from alm.agents.state import GrafanaAlertState
+from alm.ingestion.transformations import proccess_log_inference
 
 router = APIRouter(prefix="/grafana-alert", tags=["grafana-alert"])
 
@@ -99,11 +100,12 @@ async def get_grafana_alerts_by_expert_class_and_log_cluster(
 
 @router.post("/", status_code=status.HTTP_202_ACCEPTED, summary="Post log alert")
 async def post_log_alert(
-    log_alert: str,
+    log_message: str,
     detected_level: DetectedLevel = DetectedLevel.UNKNOWN,
     filename: str = "Unknown filename",
     job: str = "Unknown job",
     service_name: str = "Unknown service name",
+    database_timestamp: datetime = Depends(lambda: datetime.now()),
     timestamp: datetime = Depends(lambda: datetime.now()),
     status: LogStatus = LogStatus.OK,
     log_type: LogType = LogType.OTHER,
@@ -113,13 +115,15 @@ async def post_log_alert(
         detected_level=detected_level,
         filename=filename,
         job=job,
-        database_timestamp=timestamp,  # TODO think about it
+        database_timestamp=database_timestamp,
         service_name=service_name,
         status=status,
         log_type=log_type,
     )
     log_entry = LogEntry(
-        timestamp=timestamp.isoformat(), log_labels=log_labels, message=log_alert
+        timestamp=timestamp.isoformat(),
+        log_labels=log_labels,
+        message=proccess_log_inference(log_message),
     )
     state = await inference_graph().ainvoke({"log_entry": log_entry})
 
