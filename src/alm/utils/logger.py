@@ -61,6 +61,11 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "location": {
+                "file": record.filename,
+                "line": record.lineno,
+                "function": record.funcName,
+            },
         }
 
         # Add exception info if present
@@ -113,7 +118,7 @@ def configure_logging() -> None:
         formatter = JSONFormatter()
     else:
         formatter = ColoredFormatter(
-            fmt="%(asctime)s │ %(levelname)s │ %(name)-25s │ %(message)s",
+            fmt="%(asctime)s │ %(levelname)s │ %(name)-25s │ %(filename)s:%(lineno)d:%(funcName)s │ %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
