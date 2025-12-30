@@ -167,42 +167,8 @@ services:
       - "8000:8000"
     env_file:
       - ../../.env
-    environment:
-      # OpenAI Configuration
-      - OPENAI_API_TOKEN=${OPENAI_API_TOKEN}
-      - OPENAI_API_ENDPOINT=${OPENAI_API_ENDPOINT}
-      - OPENAI_MODEL=${OPENAI_MODEL}
-      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
-      # LangSmith Configuration
-      - LANGSMITH_TRACING=${LANGSMITH_TRACING}
-      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
-      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
-      # Database
-      - DATABASE_URL=${DATABASE_URL}
-      # Backend
-      - BACKEND_URL=${BACKEND_URL}
-      # Clustering Configuration
-      - SENTENCE_TRANSFORMER_MODEL_NAME=${SENTENCE_TRANSFORMER_MODEL_NAME}
-      - CLUSTERING_ALGORITHM=${CLUSTERING_ALGORITHM}
-      - TMP_CLUSTER_MODEL_PATH=${TMP_CLUSTER_MODEL_PATH}
-      # Observability
-      - COLLECTOR_ENDPOINT=${COLLECTOR_ENDPOINT}
-      - PROD_CORS_ORIGIN=${PROD_CORS_ORIGIN}
-      # RAG Configuration
-      - RAG_ENABLED=${RAG_ENABLED}
-      - DATA_DIR=${DATA_DIR}
-      - KNOWLEDGE_BASE_DIR=${KNOWLEDGE_BASE_DIR}
-      - RAG_TOP_K=${RAG_TOP_K}
-      - RAG_TOP_N=${RAG_TOP_N}
-      - RAG_SIMILARITY_THRESHOLD=${RAG_SIMILARITY_THRESHOLD}
-      # Embeddings Configuration
-      - EMBEDDINGS_LLM_URL=${EMBEDDINGS_LLM_URL}
-      # Loki MCP Server
-      - LOKI_MCP_SERVER_URL=${LOKI_MCP_SERVER_URL}
-      - LOG_LEVEL=${LOG_LEVEL}
-    # volumes:
-    #   - ./src:/app/src:ro
-    #   - ./config:/app/config:ro
+    volumes:
+      - ../../clustering_model.joblib:/app/clustering_model.joblib
     networks:
       - alm
     depends_on:
@@ -219,7 +185,7 @@ services:
 
   frontend:
     build:
-      context: ./ui
+      context: ../../ui
       dockerfile: Containerfile
     ports:
       - "7860:7860"  # Gradio default port
@@ -231,7 +197,7 @@ services:
       - backend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      test: ["CMD", "curl", "-f", "http://frontend:7860"]
       interval: 30s
       timeout: 10s
       retries: 3
