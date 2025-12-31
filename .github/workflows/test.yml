@@ -1,0 +1,54 @@
+name: Run Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]  
+    branches:
+    - main
+
+# Default environment variables for CI/CD tests
+# For sensitive values, use GitHub Secrets instead
+env:
+  # Add any non-sensitive default env vars here
+  PYTHONUNBUFFERED: "1"
+  # Example: DATABASE_URL: "sqlite:///:memory:"
+
+jobs:
+  tests:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    # You can also define env vars per job
+    # env:
+    #   MY_VAR: "value"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.19"
+
+      - name: Install the project
+        # uv automatically downloads the Python version from pyproject.toml
+        run: uv sync --frozen
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+        # For sensitive env vars, use GitHub Secrets:
+        # env:
+        #   API_KEY: ${{ secrets.API_KEY }}
+        #   DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Optional: Upload artifacts for debugging failed tests
+      # - name: Upload test results (on failure)
+      #   if: failure()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: test-results
+      #     path: |
+      #       .pytest_cache/
+      #       **/*.log
