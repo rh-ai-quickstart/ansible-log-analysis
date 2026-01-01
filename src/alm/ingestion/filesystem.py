@@ -71,7 +71,6 @@ def load_alert_from_filesystem(path: str) -> Optional[GrafanaAlert]:
             if groups.get("status", "error") == "error"
             else DetectedLevel.WARN,
             filename=Path(path).name,
-            job=groups.get("job", "").strip(),
             service_name=groups.get("host", "").strip(),
         ).model_dump(),
     )

@@ -352,7 +352,7 @@ def merge_loki_streams(streams: List[Dict], direction: str = DEFAULT_DIRECTION) 
 
     Args:
         streams: List of Loki stream objects, each containing:
-                 - "stream": Dict of labels (detected_level, filename, job, etc.)
+                 - "stream": Dict of labels (detected_level, filename, service_name, cluster_name, etc.)
                  - "values": List of [timestamp, message] pairs
         direction: Loki query direction:
                    - "backward": Streams contain newest-first logs (will be reversed)

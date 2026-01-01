@@ -16,7 +16,7 @@ from alm.agents.loki_agent.constants import (
     DEFAULT_START_TIME,
     DIRECTION_FORWARD,
     LOGQL_FILE_NAME_QUERY_TEMPLATE,
-    LOGQL_JOB_WILDCARD_QUERY,
+    LOGQL_SERVICE_NAME_WILDCARD_QUERY,
     LOGQL_STATUS_FILTER_TEMPLATE,
     LOGQL_LOG_TYPE_FILTER_TEMPLATE,
     LOGQL_TEXT_SEARCH_TEMPLATE,
@@ -269,9 +269,9 @@ async def search_logs_by_text(
             )
         else:
             # Search across all logs
-            # Use job=~".+" to match any job with non-empty value (Loki requirement)
+            # Use service_name=~".+" to match any service with non-empty value (Loki requirement)
             query = (
-                LOGQL_JOB_WILDCARD_QUERY
+                LOGQL_SERVICE_NAME_WILDCARD_QUERY
                 + " "
                 + LOGQL_TEXT_SEARCH_TEMPLATE.format(text=escaped_text)
             )
@@ -302,7 +302,7 @@ async def get_play_recap(
 
     Perfect for queries like:
     - "show me the play recap after this error timestamp"
-    - "get the playbook result for the job that failed at this time"
+    - "get the playbook result for the task that failed at this time"
     - "give me an overview of the tasks in this playbook"
 
     buffer_time example:

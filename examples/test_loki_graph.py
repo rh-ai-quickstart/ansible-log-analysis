@@ -36,8 +36,8 @@ fatal: [bastion.6jxd6.internal]: FAILED! => {"changed": false, "msg": "Cluster c
         log_labels=LogLabels(
             detected_level=DetectedLevel.ERROR,
             filename="/var/log/ansible_logs/failed/job_1461865.txt",
-            job="failed_logs",
             service_name="failed_logs",
+            cluster_name="test_cluster",
         ),
         message=log_message,
         timestamp=datetime.now(),
