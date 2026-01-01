@@ -6,7 +6,7 @@ import json
 from typing import Dict, Any, Optional
 
 from langchain.agents import create_agent
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage, HumanMessage
 
 from alm.agents.loki_agent.constants import (
     CONTEXT_TRUNCATE_LENGTH,
@@ -81,6 +81,7 @@ class LokiQueryAgent:
             LokiAgentOutput containing the query results and metadata
         """
         result = None
+        excluded_keys = ["logMessage"]
         try:
             # Enhance the user request with context if available
             enhanced_request = user_request
@@ -100,8 +101,8 @@ class LokiQueryAgent:
                 # Add all other fields generically
                 for key, value in context.items():
                     if (
-                        key != "logMessage" and value
-                    ):  # Skip logMessage (already added) and empty values
+                        key not in excluded_keys and value
+                    ):  # Skip excluded keys and empty values
                         # Convert camelCase to Title Case with spaces
                         formatted_key = (
                             "".join([" " + c if c.isupper() else c for c in key])
@@ -121,7 +122,7 @@ class LokiQueryAgent:
 
             # Execute the agent
             result = await self.agent.ainvoke(
-                {"messages": [{"role": "user", "content": enhanced_request}]}
+                {"messages": [HumanMessage(content=enhanced_request)]}
             )
 
             # Extract tool results from ToolMessages
