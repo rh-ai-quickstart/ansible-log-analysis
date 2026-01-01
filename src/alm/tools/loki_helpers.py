@@ -107,10 +107,14 @@ def format_rfc3339_utc(dt: datetime) -> str:
 
 def parse_relative_offset(time_str: str) -> timedelta:
     """
-    Parse relative time string like '-5m', '2h', '-1d' into timedelta.
+    Parse relative time string like '-5m', '+10m', '2h', '-1d' into timedelta.
+
+    Supports both backward (-) and forward (+) relative times:
+    - '-5m' or '5m': 5 minutes backward (before reference)
+    - '+10m': 10 minutes forward (after reference)
 
     Args:
-        time_str: Relative time string (e.g., "-5m", "2h", "-1d")
+        time_str: Relative time string (e.g., "-5m", "+10m", "2h", "-1d")
 
     Returns:
         timedelta object representing the offset
@@ -124,8 +128,11 @@ def parse_relative_offset(time_str: str) -> timedelta:
 
     sign, value, unit = match.groups()
     value = int(value)
+
+    # Handle sign: '-' means negative (backward), '+' or empty means positive (forward)
     if sign == "-":
         value = -value
+    # '+' or no sign means positive (forward in time)
 
     return timedelta(**{TIME_UNIT_MAP[unit]: value})
 
