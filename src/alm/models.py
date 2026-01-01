@@ -64,10 +64,14 @@ class DetectedLevel(str, Enum):
 
 
 class LogStatus(str, Enum):
+    """Status for task logs (entries with log_type="task"),
+    non-task logs have empty status value."""
+
     OK = "ok"
     CHANGED = "changed"
     FAILED = "failed"
     FATAL = "fatal"
+    IGNORING = "ignoring"
     SKIPPING = "skipping"
     INCLUDED = "included"
 

@@ -215,8 +215,8 @@ def parse_time_input(time_str: str, reference_timestamp: Optional[str] = None) -
     # Handle "now"
     if not time_str or time_str.lower() == "now":
         if ref_datetime:
-            # "now" relative to reference timestamp = the reference timestamp itself
-            return format_rfc3339_utc(ref_datetime)
+            # "now" relative to reference timestamp = the reference timestamp itself + small delta to avoid exact match
+            return format_rfc3339_utc(ref_datetime + timedelta(seconds=1))
         else:
             # No reference timestamp: pass "now" to Loki
             return "now"
