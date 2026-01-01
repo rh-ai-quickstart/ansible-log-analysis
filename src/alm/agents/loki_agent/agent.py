@@ -14,7 +14,7 @@ from alm.agents.loki_agent.constants import (
     LOKI_AGENT_SYSTEM_PROMPT_PATH,
 )
 from alm.agents.loki_agent.schemas import LogToolOutput, LokiAgentOutput, ToolStatus
-from alm.llm import get_llm
+from alm.llm import get_llm_support_tool_calling
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -40,7 +40,8 @@ class LokiQueryAgent:
         # Import tools here to avoid circular dependency
         from alm.tools import LOKI_STATIC_TOOLS, create_log_lines_above_tool
 
-        self.llm = get_llm()
+        # Use LLM with tool calling support for this agent
+        self.llm = get_llm_support_tool_calling()
 
         # Build tools list: static tools + closure-created tool
         self.tools = [
