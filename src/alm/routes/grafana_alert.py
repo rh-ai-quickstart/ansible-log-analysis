@@ -103,9 +103,9 @@ async def post_log_alert(
     log_message: str,
     detected_level: DetectedLevel = DetectedLevel.UNKNOWN,
     filename: str = "Unknown filename",
-    job: str = "Unknown job",
     service_name: str = "Unknown service name",
     database_timestamp: datetime = Depends(lambda: datetime.now()),
+    cluster_name: str = "Unknown cluster",
     timestamp: datetime = Depends(lambda: datetime.now()),
     status: LogStatus = LogStatus.OK,
     log_type: LogType = LogType.OTHER,
@@ -118,10 +118,10 @@ async def post_log_alert(
     log_labels = LogLabels(
         detected_level=detected_level,
         filename=filename,
-        job=job,
+        database_timestamp=database_timestamp,  # TODO: Need to change to UTC timezone!
+        cluster_name=cluster_name,
         log_type=log_type,
         service_name=service_name,
-        database_timestamp=database_timestamp,
         status=status,
     )
     log_entry = LogEntry(

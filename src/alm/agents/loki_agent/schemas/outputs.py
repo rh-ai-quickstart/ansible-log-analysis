@@ -103,7 +103,7 @@ def build_log_context(logs: List["LogEntry"]) -> str:
         logger.warning("No logs found to build context from.")
         return ""
 
-    # Group logs by labels (keeping only filename, job, and service_name)
+    # Group logs by labels (keeping only filename, cluster_name and service_name)
     logs_by_labels = defaultdict(list)
     for log in logs:
         # Keep only specific labels for grouping
@@ -112,7 +112,7 @@ def build_log_context(logs: List["LogEntry"]) -> str:
         wanted_labels = {
             k: v
             for k, v in labels_dict.items()
-            if k in ["filename", "job", "service_name"]
+            if k in ["filename", "service_name", "cluster_name"]
         }
         labels_key = ", ".join([f"{k}={v}" for k, v in sorted(wanted_labels.items())])
         logs_by_labels[labels_key].append(log)

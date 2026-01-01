@@ -140,7 +140,7 @@ class LokiQueryAgent:
                     log_tool_output_object = LogToolOutput.model_validate_json(
                         tool_result
                     )
-                    logger.info(
+                    logger.debug(
                         f"Final executed LogQL query: {log_tool_output_object.query}"
                     )
 
