@@ -29,7 +29,7 @@ env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path, override=False)
 
 # Import config to check mode
-from alm.config import config  # noqa: E402
+from utils.config import config  # noqa: E402
 
 from rag.query_pipeline import (  # noqa: E402
     AnsibleErrorQueryPipeline,

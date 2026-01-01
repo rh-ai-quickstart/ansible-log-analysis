@@ -16,20 +16,11 @@ data:
   CLUSTERING_ALGORITHM: {{ .Values.config.clustering.algorithm | quote }}
   TMP_CLUSTER_MODEL_PATH: {{ .Values.config.clustering.tmpClusterModelPath | quote }}
   {{- end }}
-  {{- if .Values.rag.enabled }}
-  # RAG Configuration
-  RAG_ENABLED: {{ .Values.rag.enabled | quote }}
-  # RAG Service URL (microservice endpoint)
-  RAG_SERVICE_URL: {{ .Values.rag.serviceUrl | default "http://alm-rag:8002" | quote }}
-  # Embedding service URL (for init job, not used by backend)
-  EMBEDDINGS_LLM_URL: {{ .Values.rag.embedding.apiUrl | default "http://alm-embedding:8080" | quote }}
-  # Data paths (for init job only)
-  DATA_DIR: {{ .Values.rag.dataDir | quote }}
-  KNOWLEDGE_BASE_DIR: {{ .Values.rag.knowledgeBaseDir | quote }}
-  # Query configuration
-  RAG_TOP_K: {{ .Values.rag.query.topK | quote }}
-  RAG_TOP_N: {{ .Values.rag.query.topN | quote }}
-  RAG_SIMILARITY_THRESHOLD: {{ .Values.rag.query.similarityThreshold | quote }}
-  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  {{- if .Values.config.rag }}
+  # RAG Query Configuration (how backend queries RAG service)
+  RAG_TOP_K: {{ .Values.config.rag.topK | quote }}
+  RAG_TOP_N: {{ .Values.config.rag.topN | quote }}
+  RAG_SIMILARITY_THRESHOLD: {{ .Values.config.rag.similarityThreshold | quote }}
   {{- end }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
 {{- end }}

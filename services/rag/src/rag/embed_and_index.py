@@ -29,8 +29,8 @@ from pathlib import Path
 from langchain_core.documents import Document
 import faiss
 
-from alm.config import config
-from alm.utils.logger import get_logger
+from utils.config import config
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -460,7 +460,12 @@ class AnsibleErrorEmbedder:
         logger.debug("Stored metadata for %d errors", len(self.error_store))
 
     def save_index(self):
-        """Persist FAISS index and metadata to disk."""
+        """
+        Persist FAISS index and metadata to disk.
+
+        DEPRECATED: This method is kept for backward compatibility with tests.
+        Production code should use save_to_minio() instead.
+        """
         logger.debug("=" * 60)
         logger.debug("SAVING INDEX AND METADATA")
         logger.debug("=" * 60)
@@ -492,10 +497,13 @@ class AnsibleErrorEmbedder:
         logger.debug("  Metadata size: %.2f MB", metadata_size_mb)
         logger.debug("  Total storage: %.2f MB", index_size_mb + metadata_size_mb)
 
-    # save_to_postgresql() method removed - RAG embeddings now stored in MinIO
-
     def load_index(self):
-        """Load FAISS index and metadata from disk."""
+        """
+        Load FAISS index and metadata from disk.
+
+        DEPRECATED: This method is kept for backward compatibility with tests.
+        Production code should use RAGIndexLoader (from MinIO) instead.
+        """
         logger.debug("=" * 60)
         logger.debug("LOADING INDEX AND METADATA")
         logger.debug("=" * 60)
@@ -524,7 +532,12 @@ class AnsibleErrorEmbedder:
             logger.warning("  Current: %s", self.model_name)
 
     def ingest_and_index(self, chunks: List[Document]):
-        """Complete ingestion and indexing pipeline."""
+        """
+        Complete ingestion and indexing pipeline.
+
+        DEPRECATED: This method is kept for backward compatibility with tests.
+        Production code should use ingest_and_index_to_minio() instead.
+        """
         logger.info("=" * 70)
         logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING")
         logger.info("=" * 70)
@@ -591,7 +604,7 @@ class AnsibleErrorEmbedder:
         logger.info("SAVING RAG INDEX TO MINIO")
         logger.info("=" * 60)
 
-        from alm.utils.minio import get_minio_client, ensure_bucket_exists
+        from utils.minio import get_minio_client, ensure_bucket_exists
 
         minio_client = get_minio_client(
             minio_endpoint, minio_port, minio_access_key, minio_secret_key
@@ -712,47 +725,5 @@ class AnsibleErrorEmbedder:
             raise
 
 
-def main():
-    """Process all PDFs in knowledge_base directory."""
-    from rag.ingest_and_chunk import AnsibleErrorParser
-    import glob
-
-    # Print and validate configuration
-    config.print_config()
-    config.validate()
-
-    logger.info("=" * 70)
-    logger.info("ANSIBLE ERROR KNOWLEDGE BASE - EMBEDDING AND INDEXING")
-    logger.info("=" * 70)
-
-    # Initialize
-    parser = AnsibleErrorParser()
-    embedder = AnsibleErrorEmbedder()
-
-    # Find PDFs
-    pdf_files = sorted(glob.glob(str(config.storage.knowledge_base_dir / "*.pdf")))
-
-    logger.info("Found %d PDF files", len(pdf_files))
-    for pdf in pdf_files:
-        logger.info("  - %s", os.path.basename(pdf))
-
-    # Process all PDFs
-    all_chunks = []
-    for pdf_path in pdf_files:
-        logger.info("Processing: %s", os.path.basename(pdf_path))
-        chunks = parser.parse_pdf_to_chunks(pdf_path)
-        all_chunks.extend(chunks)
-        logger.info("  %d chunks", len(chunks))
-
-    logger.info("=" * 70)
-    logger.info("TOTAL: %d chunks from %d PDFs", len(all_chunks), len(pdf_files))
-    logger.info("=" * 70)
-
-    # Ingest and index
-    embedder.ingest_and_index(all_chunks)
-
-    return embedder
-
-
-if __name__ == "__main__":
-    embedder = main()
+# main() function removed - use rag_init_pipeline.py for production index building
+# This file is now a library module, not a standalone script

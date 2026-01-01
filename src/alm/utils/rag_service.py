@@ -33,10 +33,6 @@ def wait_for_rag_service(rag_service_url: str, max_wait_time: int = 600):
         logger.info("RAG is disabled, skipping RAG service wait")
         return
 
-    logger.info("\n" + "=" * 70)
-    logger.info("WAITING FOR RAG SERVICE TO BE READY")
-    logger.info("=" * 70)
-
     ready_url = f"{rag_service_url}/ready"
     elapsed = 0
     check_interval = 5

@@ -11,8 +11,7 @@ image:
   # This sets the pull policy for images.
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  # Use 'rag-v1' for RAG-enabled version, or 'latest' for most recent
-  tag: "latest"
+  tag: "rag-as-a-service"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 # imagePullSecrets: []
@@ -211,6 +210,15 @@ config:
     sentenceTransformerModelName: "Qwen/Qwen3-Embedding-0.6B"
     algorithm: "meanshift"
     tmpClusterModelPath: "clustering_model.joblib"
+  
+  # RAG query configuration (how backend queries RAG service)
+  rag:
+    # Number of top candidates to retrieve from FAISS
+    topK: 10
+    # Number of final results to return to the agent
+    topN: 3
+    # Minimum similarity threshold (0-1)
+    similarityThreshold: 0.6
 
 # RBAC configuration
 rbac:
@@ -233,60 +241,3 @@ rbac:
 postgresql:
   # Whether to wait for PostgreSQL to be ready before starting the main container
   waitForReady: true
-
-# RAG (Retrieval Augmented Generation) configuration
-rag:
-  # Enable or disable RAG functionality
-  enabled: true
-  
-  # RAG Service URL (microservice endpoint)
-  # Backend pods communicate with RAG service via HTTP
-  serviceUrl: "http://alm-rag:8002"
-  
-  # RAG Init Job Image (lighter image for building RAG index)
-  initImage:
-    repository: quay.io/rh-ai-quickstart/alm-rag
-    tag: "init"
-  
-  # MinIO configuration (for RAG index storage)
-  minio:
-    endpoint: "minio"
-    port: "9000"
-    accessKey: "minioadmin"
-    secretKey: "minioadmin"
-  bucketName: "rag-index"
-  forceRebuild: false  # Set to true to force rebuild even if index exists
-  
-  # Embedding model configuration (used by init job for building index)
-  # NOTE: API credentials (apiKey, apiUrl, modelName) are provided during 'make install'
-  # and stored in the 'model-secret' Kubernetes secret
-  embedding:
-    # Model is hardcoded to nomic-ai/nomic-embed-text-v1.5 (no config needed)
-    # Service URL defaults to http://alm-embedding:8080 (local cluster service)
-    apiUrl: "http://alm-embedding:8080"  # TEI service URL (defaults to local cluster service)
-    port: 8080  # Port for the embedding service (TEI)
-  
-  # Data paths (used by init job for knowledge base PDFs)
-  # Note: PDFs should be baked into the container image at /app/data/knowledge_base
-  # The init job will read PDFs from the image and process them
-  # The RAG index (embeddings) is stored in MinIO
-  dataDir: "/app/data/rag"
-  knowledgeBaseDir: "/app/data/knowledge_base"  # PDFs should be in container image
-  
-  # Query configuration
-  query:
-    # Number of top candidates to retrieve from FAISS
-    topK: 4
-    # Number of final results to return to the agent
-    topN: 1
-    # Minimum similarity threshold (0-1)
-    similarityThreshold: 0.6
-  
-  # Resources for RAG init job
-  initResources: {}
-    # limits:
-    #   cpu: "2"
-    #   memory: "4Gi"
-    # requests:
-    #   cpu: "1"
-    #   memory: "2Gi"

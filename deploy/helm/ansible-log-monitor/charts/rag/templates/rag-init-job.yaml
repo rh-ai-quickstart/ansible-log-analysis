@@ -1,6 +1,5 @@
 {{- if .Values.global.rag.enabled }}
 {{- $backendFullname := printf "%s-%s" .Release.Name "backend" }}
-{{- $backendConfigMap := printf "%s-config" $backendFullname }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -43,11 +42,14 @@ spec:
               done
               echo "Embedding service is ready!"
           env:
+            {{- $embeddingsUrl := "http://alm-embedding:8080" }}
+            {{- range .Values.env }}
+            {{- if eq .name "EMBEDDINGS_LLM_URL" }}
+            {{- $embeddingsUrl = .value }}
+            {{- end }}
+            {{- end }}
             - name: EMBEDDINGS_LLM_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $backendConfigMap }}
-                  key: EMBEDDINGS_LLM_URL
+              value: {{ $embeddingsUrl | quote }}
       containers:
         - name: rag-init-pipeline
           {{- with .Values.securityContext }}
@@ -68,11 +70,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: RAG_SERVICE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $backendConfigMap }}
-                  key: RAG_SERVICE_URL
             - name: RAG_BUCKET_NAME
               value: {{ .Values.rag.bucketName | default "rag-index" | quote }}
             - name: MINIO_ENDPOINT
@@ -96,27 +93,21 @@ spec:
                   name: minio
                   key: password
             - name: RAG_ENABLED
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $backendConfigMap }}
-                  key: RAG_ENABLED
+              value: "true"
             - name: RAG_FORCE_REBUILD
               value: {{ .Values.rag.forceRebuild | default "false" | quote }}
+            {{- $embeddingsUrl := "http://alm-embedding:8080" }}
+            {{- range .Values.env }}
+            {{- if eq .name "EMBEDDINGS_LLM_URL" }}
+            {{- $embeddingsUrl = .value }}
+            {{- end }}
+            {{- end }}
             - name: EMBEDDINGS_LLM_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $backendConfigMap }}
-                  key: EMBEDDINGS_LLM_URL
+              value: {{ $embeddingsUrl | quote }}
             - name: DATA_DIR
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $backendConfigMap }}
-                  key: DATA_DIR
+              value: {{ .Values.rag.dataDir | default "/app/data/rag" | quote }}
             - name: KNOWLEDGE_BASE_DIR
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ $backendConfigMap }}
-                  key: KNOWLEDGE_BASE_DIR
+              value: {{ .Values.rag.knowledgeBaseDir | default "/app/data/knowledge_base" | quote }}
           {{- with .Values.rag.initResources }}
           resources:
             {{- toYaml . | nindent 12 }}

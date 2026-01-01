@@ -24,18 +24,14 @@ RUN chmod -R +r .
 # Copy RAG-related source code (now in services/rag)
 COPY services/rag/src/rag/ ./src/rag/
 COPY services/rag/src/utils/ ./src/utils/
-# Copy required alm utilities (needed by rag_init_pipeline and RAG modules)
-COPY src/alm/config.py ./src/alm/
-COPY src/alm/utils/logger.py ./src/alm/utils/
-COPY src/alm/utils/minio.py ./src/alm/utils/
 COPY services/rag/rag_init_pipeline.py ./rag_init_pipeline.py
 
 # Copy knowledge base PDFs (needed to build RAG index)
 COPY data/knowledge_base/ ./data/knowledge_base/
 
 # Create __init__.py files for proper Python imports if they don't exist
-RUN mkdir -p src/rag src/utils src/alm src/alm/utils && \
-    touch src/__init__.py src/rag/__init__.py src/utils/__init__.py src/alm/__init__.py src/alm/utils/__init__.py 2>/dev/null || true
+RUN mkdir -p src/rag src/utils && \
+    touch src/__init__.py src/rag/__init__.py src/utils/__init__.py 2>/dev/null || true
 
 # Create data directories with proper permissions for OpenShift (random UID, group 0)
 RUN mkdir -p /app/data/rag /app/data/knowledge_base && \

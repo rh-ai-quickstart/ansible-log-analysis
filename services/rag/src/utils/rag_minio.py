@@ -5,9 +5,7 @@ RAG-specific MinIO utilities for checking RAG index status.
 import json
 from typing import Optional, Dict, Any
 
-# Import from alm.utils.minio (shared utility)
-# Note: This requires services/rag/src to be in sys.path or alm to be importable
-from alm.utils.minio import get_minio_client
+from utils.minio import get_minio_client
 
 
 def get_rag_index_status(

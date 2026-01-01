@@ -9,7 +9,7 @@ import json
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 
-from alm.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

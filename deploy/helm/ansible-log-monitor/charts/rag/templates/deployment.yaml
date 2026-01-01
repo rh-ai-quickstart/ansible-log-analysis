@@ -29,7 +29,7 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "rag.serviceAccountName" . }}
       initContainers:
-        - name: wait-for-rag-index
+        - name: wait-for-rag-init-and-index
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           command:
             - sh
@@ -40,79 +40,129 @@ spec:
               import json
               import time
               import sys
+              import subprocess
 
-              try:
-                  from minio import Minio
-              except ImportError as e:
-                  print(f"ERROR: Failed to import minio library: {e}")
-                  print("  Make sure 'minio' package is installed in the container image")
-                  sys.exit(1)
-
-              endpoint = os.getenv("MINIO_ENDPOINT")
-              port = os.getenv("MINIO_PORT", "9000")
-              access_key = os.getenv("MINIO_ACCESS_KEY")
-              secret_key = os.getenv("MINIO_SECRET_KEY")
-              bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
-              max_wait = int(os.getenv("MAX_WAIT", "300"))
-
-              if not all([endpoint, port, access_key, secret_key]):
-                  print("ERROR: Missing required MinIO environment variables")
-                  print(f"  MINIO_ENDPOINT: {endpoint}")
-                  print(f"  MINIO_PORT: {port}")
-                  print(f"  MINIO_ACCESS_KEY: {'***' if access_key else 'MISSING'}")
-                  print(f"  MINIO_SECRET_KEY: {'***' if secret_key else 'MISSING'}")
-                  sys.exit(1)
-
-              client = Minio(
-                  f"{endpoint}:{port}",
-                  access_key=access_key,
-                  secret_key=secret_key,
-                  secure=False,
-              )
-
-              elapsed = 0
-
-              while elapsed < max_wait:
-                  try:
-                      # Check if bucket exists
-                      if not client.bucket_exists(bucket_name):
-                          if elapsed == 0 or elapsed % 30 == 0:
-                              print(f"  Bucket '{bucket_name}' does not exist yet... ({elapsed}s/{max_wait}s)")
-                          time.sleep(5)
-                          elapsed += 5
-                          continue
-                      
-                      # Check LATEST.json
-                      response = client.get_object(bucket_name, "LATEST.json")
-                      pointer = json.loads(response.read().decode())
-                      status = pointer.get("status")
-                      
-                      if status == "READY":
-                          total_errors = pointer.get("total_errors", 0)
-                          print(f"✓ RAG index is ready! (status: READY, {total_errors} errors)")
-                          sys.exit(0)
-                      
-                      if status == "FAILED":
-                          error_msg = pointer.get("error_message", "Unknown error")
-                          print(f"✗ RAG index build failed: {error_msg}")
-                          sys.exit(1)
-                      
-                      # Status is BUILDING or something else
-                      if elapsed == 0 or elapsed % 30 == 0:
-                          print(f"  Index status: {status}, waiting... ({elapsed}s/{max_wait}s)")
-                      
-                  except Exception as e:
-                      # LATEST.json doesn't exist or can't be read, or connection error
-                      if elapsed == 0 or elapsed % 30 == 0:
-                          error_type = type(e).__name__
-                          error_msg = str(e)[:200]  # Limit error message length
-                          print(f"  Index not yet available ({error_type}: {error_msg})... ({elapsed}s/{max_wait}s)")
+              def wait_for_job_completion(job_name, namespace, max_wait=600):
+                  """Wait for Kubernetes job to complete using kubectl/oc."""
+                  print(f"Waiting for RAG init job '{job_name}' to complete...")
                   
-                  time.sleep(5)
-                  elapsed += 5
+                  # Try oc first (OpenShift), fallback to kubectl
+                  cmd = None
+                  if os.path.exists("/usr/bin/oc") or subprocess.run(["which", "oc"], capture_output=True).returncode == 0:
+                      cmd = ["oc", "wait", "--for=condition=complete", f"--timeout={max_wait}s", f"job/{job_name}", "-n", namespace]
+                  elif os.path.exists("/usr/bin/kubectl") or subprocess.run(["which", "kubectl"], capture_output=True).returncode == 0:
+                      cmd = ["kubectl", "wait", "--for=condition=complete", f"--timeout={max_wait}s", f"job/{job_name}", "-n", namespace]
+                  else:
+                      print("WARNING: Neither 'oc' nor 'kubectl' found, skipping job wait check")
+                      print("  Proceeding to check MinIO index directly...")
+                      return True
+                  
+                  try:
+                      result = subprocess.run(cmd, capture_output=True, text=True, timeout=max_wait)
+                      if result.returncode == 0:
+                          print("✓ RAG init job completed successfully!")
+                          return True
+                      else:
+                          print(f"✗ RAG init job failed or timed out: {result.stderr}")
+                          return False
+                  except subprocess.TimeoutExpired:
+                      print(f"✗ Timeout waiting for RAG init job (waited {max_wait}s)")
+                      return False
+                  except Exception as e:
+                      print(f"WARNING: Error checking job status: {e}")
+                      print("  Proceeding to check MinIO index directly...")
+                      return True
 
-              print(f"✗ Timeout waiting for RAG index (waited {max_wait}s)")
-              sys.exit(1)
+              def check_minio_index():
+                  """Check if RAG index is ready in MinIO."""
+                  try:
+                      from minio import Minio
+                  except ImportError as e:
+                      print(f"ERROR: Failed to import minio library: {e}")
+                      print("  Make sure 'minio' package is installed in the container image")
+                      sys.exit(1)
+
+                  endpoint = os.getenv("MINIO_ENDPOINT")
+                  port = os.getenv("MINIO_PORT", "9000")
+                  access_key = os.getenv("MINIO_ACCESS_KEY")
+                  secret_key = os.getenv("MINIO_SECRET_KEY")
+                  bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
+                  max_wait = int(os.getenv("MAX_WAIT", "300"))
+
+                  if not all([endpoint, port, access_key, secret_key]):
+                      print("ERROR: Missing required MinIO environment variables")
+                      print(f"  MINIO_ENDPOINT: {endpoint}")
+                      print(f"  MINIO_PORT: {port}")
+                      print(f"  MINIO_ACCESS_KEY: {'***' if access_key else 'MISSING'}")
+                      print(f"  MINIO_SECRET_KEY: {'***' if secret_key else 'MISSING'}")
+                      sys.exit(1)
+
+                  print(f"\nChecking MinIO for RAG index in bucket '{bucket_name}'...")
+                  client = Minio(
+                      f"{endpoint}:{port}",
+                      access_key=access_key,
+                      secret_key=secret_key,
+                      secure=False,
+                  )
+
+                  elapsed = 0
+
+                  while elapsed < max_wait:
+                      try:
+                          # Check if bucket exists
+                          if not client.bucket_exists(bucket_name):
+                              if elapsed == 0 or elapsed % 30 == 0:
+                                  print(f"  Bucket '{bucket_name}' does not exist yet... ({elapsed}s/{max_wait}s)")
+                              time.sleep(5)
+                              elapsed += 5
+                              continue
+                          
+                          # Check LATEST.json
+                          response = client.get_object(bucket_name, "LATEST.json")
+                          pointer = json.loads(response.read().decode())
+                          status = pointer.get("status")
+                          
+                          if status == "READY":
+                              total_errors = pointer.get("total_errors", 0)
+                              print(f"✓ RAG index is ready! (status: READY, {total_errors} errors)")
+                              return True
+                          
+                          if status == "FAILED":
+                              error_msg = pointer.get("error_message", "Unknown error")
+                              print(f"✗ RAG index build failed: {error_msg}")
+                              sys.exit(1)
+                          
+                          # Status is BUILDING or something else
+                          if elapsed == 0 or elapsed % 30 == 0:
+                              print(f"  Index status: {status}, waiting... ({elapsed}s/{max_wait}s)")
+                          
+                      except Exception as e:
+                          # LATEST.json doesn't exist or can't be read, or connection error
+                          if elapsed == 0 or elapsed % 30 == 0:
+                              error_type = type(e).__name__
+                              error_msg = str(e)[:200]  # Limit error message length
+                              print(f"  Index not yet available ({error_type}: {error_msg})... ({elapsed}s/{max_wait}s)")
+                      
+                      time.sleep(5)
+                      elapsed += 5
+
+                  print(f"✗ Timeout waiting for RAG index (waited {max_wait}s)")
+                  return False
+
+              # Main execution
+              {{- $backendFullname := printf "%s-%s" .Release.Name "backend" }}
+              job_name = "{{ $backendFullname }}-rag-init"
+              namespace = "{{ .Release.Namespace }}"
+              
+              # Step 1: Wait for init job to complete
+              if not wait_for_job_completion(job_name, namespace):
+                  sys.exit(1)
+              
+              # Step 2: Check MinIO index
+              if not check_minio_index():
+                  sys.exit(1)
+              
+              print("\n✓ RAG initialization complete - service can start!")
               PYTHON_SCRIPT
           env:
             - name: MINIO_ENDPOINT

@@ -14,7 +14,7 @@ env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path, override=False)
 
 # Import config to check API settings
-from alm.config import config  # noqa: E402
+from utils.config import config  # noqa: E402
 from rag.embed_and_index import EmbeddingClient  # noqa: E402
 import numpy as np  # noqa: E402
 

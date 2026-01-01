@@ -9,7 +9,7 @@ rag_src_path = Path(__file__).parent / "src"
 if rag_src_path.exists():
     sys.path.insert(0, str(rag_src_path))
 
-from alm.utils.logger import get_logger  # noqa: E402
+from utils.logger import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -19,7 +19,7 @@ def setup_rag_directories():
     Setup RAG data directory structure.
     Creates the directory needed for temporary index storage before uploading to MinIO.
     """
-    from alm.config import config
+    from utils.config import config
 
     logger.info("\n" + "=" * 70)
     logger.info("SETTING UP RAG DATA DIRECTORY STRUCTURE")
@@ -58,7 +58,7 @@ async def build_rag_index():
     Build RAG index from knowledge base PDFs and save to MinIO.
     This runs during the RAG init job to create the FAISS index and save artifacts to MinIO.
     """
-    from alm.config import config
+    from utils.config import config
     from rag.ingest_and_chunk import AnsibleErrorParser
     from rag.embed_and_index import AnsibleErrorEmbedder
     from utils.rag_minio import check_rag_index_exists, get_rag_index_status

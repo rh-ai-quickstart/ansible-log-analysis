@@ -97,6 +97,14 @@ rag:
   dataDir: "/app/data/rag"
   knowledgeBaseDir: "/app/data/knowledge_base"
   forceRebuild: false  # Set to true to force rebuild even if index exists
+  # Resources for RAG init job
+  initResources: {}
+    # limits:
+    #   cpu: "2"
+    #   memory: "4Gi"
+    # requests:
+    #   cpu: "1"
+    #   memory: "2Gi"
 
 resources:
   requests:

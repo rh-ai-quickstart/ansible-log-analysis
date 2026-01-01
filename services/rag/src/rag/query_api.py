@@ -9,7 +9,7 @@ This provides a clean interface for agent integration.
 from typing import Dict, Any, Optional, List
 from rag.query_pipeline import AnsibleErrorQueryPipeline
 
-from alm.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
