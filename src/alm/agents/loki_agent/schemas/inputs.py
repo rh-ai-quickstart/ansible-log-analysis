@@ -3,7 +3,7 @@ Pydantic schemas for Loki query tools.
 These schemas define the input parameters for each tool using args_schema.
 """
 
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from pydantic import BaseModel, Field
 
 from alm.agents.loki_agent.constants import (
@@ -13,7 +13,7 @@ from alm.agents.loki_agent.constants import (
     DEFAULT_LINE_ABOVE,
     DEFAULT_START_TIME,
 )
-from alm.models import DetectedLevel
+from alm.models import LogStatus, LogType
 
 
 class FileLogSchema(BaseModel):
@@ -24,18 +24,23 @@ class FileLogSchema(BaseModel):
     )
     log_timestamp: Optional[str] = Field(
         default=None,
-        description="Reference timestamp for relative time calculations (Unix timestamp, or datetime string). REQUIRED when using relative times like '-5m'. Not needed when using absolute datetime strings.",
+        description="Reference timestamp for relative time calculations (Unix timestamp, or datetime string). REQUIRED when using relative times like '-5m' or '+10m'. Not needed when using absolute datetime strings.",
     )
     start_time: str | int = Field(
         default=DEFAULT_START_TIME,
-        description="Relative offset from log_timestamp (e.g., '-1h'), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
+        description="Relative offset from log_timestamp (e.g., '-1h' for 1 hour before, '+30m' for 30 minutes after), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
     )
     end_time: str | int = Field(
         default=DEFAULT_END_TIME,
-        description="Relative offset from log_timestamp (e.g., '-5m'), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
+        description="Relative offset from log_timestamp (e.g., '-5m' for 5 minutes before, '+1h' for 1 hour after), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
     )
-    level: DetectedLevel | None = Field(
-        default=None, description="Log level filter: error, warn, info, debug, unknown"
+    status_list: Optional[List[LogStatus]] = Field(
+        default=None,
+        description="Status filters (only applies to TASK log_type): ok, changed, failed, fatal, ignoring, skipping, included. Can specify multiple values. Non-task logs have empty status.",
+    )
+    log_type_list: Optional[List[LogType]] = Field(
+        default=None,
+        description="Log type filters: task, recap, play, other. Can specify multiple values.",
     )
     limit: int = Field(
         default=DEFAULT_LIMIT, description="Maximum number of log entries to return"
@@ -54,15 +59,15 @@ class SearchTextSchema(BaseModel):
     )
     log_timestamp: Optional[str] = Field(
         default=None,
-        description="Reference timestamp for relative time calculations (Unix timestamp, or datetime string). REQUIRED when using relative times like '-5m'. Not needed when using absolute datetime strings.",
+        description="Reference timestamp for relative time calculations (Unix timestamp, or datetime string). REQUIRED when using relative times like '-5m' or '+10m'. Not needed when using absolute datetime strings.",
     )
     start_time: str | int = Field(
         default=DEFAULT_START_TIME,
-        description="Relative offset from log_timestamp (e.g., '-1h'), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
+        description="Relative offset from log_timestamp (e.g., '-1h' for 1 hour before, '+30m' for 30 minutes after), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
     )
     end_time: str | int = Field(
         default=DEFAULT_END_TIME,
-        description="Relative offset from log_timestamp (e.g., '-5m'), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
+        description="Relative offset from log_timestamp (e.g., '-5m' for 5 minutes before, '+1h' for 1 hour after), Unix timestamp, absolute datetime string, or 'now'. Offsets require log_timestamp.",
     )
     file_name: Optional[str] = Field(
         default=None,
@@ -94,5 +99,5 @@ class PlayRecapSchema(BaseModel):
     )
     buffer_time: str = Field(
         default="6h",
-        description="Time window to search after the target timestamp (e.g., '24h', '12h', '1d')",
+        description="Time window to search forward after the target timestamp (e.g., '6h', '+12h', '1d', '+2d'). Forward-looking time from the log_timestamp.",
     )

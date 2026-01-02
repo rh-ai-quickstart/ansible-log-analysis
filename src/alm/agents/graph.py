@@ -81,24 +81,29 @@ async def router_step_by_step_solution_node(
 async def get_more_context_node(
     state: GrafanaAlertState,
 ) -> Command:
-    log_summary = state.logSummary
-    subgraph_state = await more_context_agent_graph.ainvoke(
-        ContextAgentState(
-            log_summary=log_summary,
-            log_entry=state.log_entry,
-            expert_classification=state.expertClassification,
+    try:
+        log_summary = state.logSummary
+        subgraph_state = await more_context_agent_graph.ainvoke(
+            ContextAgentState(
+                log_summary=log_summary,
+                log_entry=state.log_entry,
+                expert_classification=state.expertClassification,
+            )
         )
-    )
-    context_agent_state = ContextAgentState.model_validate(subgraph_state)
-    loki_context = context_agent_state.loki_context
-    cheat_sheet_context = (
-        f"Context from cheat sheet:\n{context_agent_state.cheat_sheet_context}"
-    )
-    context = (
-        f"Context logs from loki:\n{loki_context}\n\n{cheat_sheet_context}"
-        if loki_context
-        else cheat_sheet_context
-    )
+        context_agent_state = ContextAgentState.model_validate(subgraph_state)
+        loki_context = context_agent_state.loki_context
+        cheat_sheet_context = (
+            f"Context from cheat sheet:\n{context_agent_state.cheat_sheet_context}"
+        )
+        context = (
+            f"Context logs from loki:\n{loki_context}\n\n{cheat_sheet_context}"
+            if loki_context
+            else cheat_sheet_context
+        )
+    except Exception as e:
+        logger.error("Exception in get_more_context_node: %s", e)
+        logger.warning("Continuing without context due to error.")
+        context = ""
     return Command(
         goto="suggest_step_by_step_solution_node",
         update={"contextForStepByStepSolution": context},

@@ -30,7 +30,9 @@ async def identify_missing_log_data_node(
     # Get the current state
     log_summary = state.log_summary
     log_labels = state.log_entry.log_labels
-    log_timestamp = state.log_entry.timestamp
+    # Note: this is the ingested timestamp, not the real log timestamp.
+    # From Loki Agent POV its the log timestamp
+    log_timestamp = state.log_entry.log_labels.database_timestamp.isoformat()
     # Get LLM instance
     llm = get_llm()
 
@@ -64,17 +66,21 @@ async def loki_execute_query_node(
 
         # Extract log context for agent creation
         log_message = state.log_entry.message
-        log_timestamp = state.log_entry.timestamp
-        log_labels = state.log_entry.log_labels
-        file_name = log_labels.filename
+        # Note: this is the ingested timestamp, not the real log timestamp
+        # From Loki Agent POV its the log timestamp
+        database_timestamp = state.log_entry.log_labels.database_timestamp.isoformat()
+        log_labels = state.log_entry.log_labels.model_dump()
+        # Exclude database_timestamp since it present as timestamp to Loki Agent
+        del log_labels["database_timestamp"]
+        file_name = log_labels.get("filename")
 
-        if not all([file_name, log_message, log_timestamp]):
+        if not all([file_name, log_message, database_timestamp]):
             raise ValueError(
                 f"One of the log context fields is missing in log_entry, log_enty = {state.log_entry}"
             )
 
         # Create a fresh agent instance with log context bound via closure
-        agent = create_loki_agent(file_name, log_message, log_timestamp)
+        agent = create_loki_agent(file_name, log_message, database_timestamp)
 
         # Prepare context from the current state
         context = {
@@ -82,7 +88,7 @@ async def loki_execute_query_node(
             "expertClassification": state.expert_classification,
             "logMessage": log_message,
             "logLabels": log_labels,
-            "timestamp": log_timestamp,
+            "timestamp": database_timestamp,
         }
 
         # Execute the query
