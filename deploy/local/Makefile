@@ -50,10 +50,10 @@ start: stop ## 🚀 Start all services locally
 	@echo "   Waiting for PostgreSQL to be ready..."
 	@$(MAKE) -s phoenix
 	@$(MAKE) -s loki-stack
-	@$(MAKE) -s embedding
+	@$(MAKE) -s embedding & \
+	@$(MAKE) -s aap-mock & wait
 	@$(MAKE) -s minio
 	@$(MAKE) -s rag
-	@$(MAKE) -s aap-mock
 	@$(MAKE) -s backend
 	@$(MAKE) -s ui
 	@$(MAKE) -s annotation
@@ -200,7 +200,6 @@ stop-embedding: ## 🛑 Stop Embedding Service
 
 stop-minio: ## 🛑 Stop MinIO
 	@$(COMPOSE_CMD) -f compose.yaml down minio || true
-	@docker rm -f minio 2>/dev/null || true
 	@echo "   ✓ MinIO stopped and removed"
 
 stop-rag: ## 🛑 Stop RAG Service
@@ -274,6 +273,18 @@ kill-ports: ## 🔌 Kill processes using required ports
 		fuser -k 8082/tcp 2>/dev/null || true; \
 	fi
 	@echo "   ✓ AAP Mock 8082 killed"
+	@echo "   ✓ MinIO 9000 killed"
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		lsof -ti :9000 | xargs kill -9 2>/dev/null || true; \
+	else \
+		fuser -k 9000/tcp 2>/dev/null || true; \
+	fi
+	@echo "   ✓ MinIO 9001 killed"
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		lsof -ti :9001 | xargs kill -9 2>/dev/null || true; \
+	else \
+		fuser -k 9001/tcp 2>/dev/null || true; \
+	fi
 
 status: ## 📊 Show status of all services
 	@echo "📊 Service Status:"
