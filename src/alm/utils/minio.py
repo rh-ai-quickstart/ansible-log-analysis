@@ -2,6 +2,9 @@ import os
 import io
 from typing import Optional
 from minio import Minio
+from alm.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_minio_client(
@@ -10,28 +13,6 @@ def get_minio_client(
     minio_access_key: Optional[str] = None,
     minio_secret_key: Optional[str] = None,
 ) -> Minio:
-    """
-    Get a MinIO client with configuration from parameters, env vars, or defaults.
-
-    Configuration priority:
-    1. Function parameters (if provided)
-    2. Environment variables (MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
-    3. Defaults (localhost:9000, minioadmin/minioadmin) - only for local development outside Docker
-
-    Args:
-        minio_endpoint: MinIO endpoint (overrides env/default)
-        minio_port: MinIO port (overrides env/default)
-        minio_access_key: MinIO access key (overrides env/default)
-        minio_secret_key: MinIO secret key (overrides env/default)
-
-    Returns:
-        MinIO client instance
-
-    Raises:
-        ValueError: If required MinIO configuration is missing
-    """
-    # Priority: function param > env var > default
-    # Defaults only used for local development outside Docker
     endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT", "localhost")
     port = minio_port or os.getenv("MINIO_PORT", "9000")
     access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY", "minioadmin")
@@ -51,23 +32,6 @@ def get_minio_client(
     )
 
 
-def ensure_bucket_exists(minio_client: Minio, bucket_name: str) -> bool:
-    """
-    Ensure a MinIO bucket exists, creating it if necessary.
-
-    Args:
-        minio_client: MinIO client instance
-        bucket_name: Name of the bucket to ensure exists
-
-    Returns:
-        True if the bucket was created, False if it already existed
-    """
-    if not minio_client.bucket_exists(bucket_name):
-        minio_client.make_bucket(bucket_name)
-        return True
-    return False
-
-
 def upload_model_to_minio(model, bucket_name: str, file_name: str):
     """
     Upload a sklearn model to MinIO.
@@ -81,9 +45,12 @@ def upload_model_to_minio(model, bucket_name: str, file_name: str):
     import joblib
 
     minio_client = get_minio_client()
-    ensure_bucket_exists(
-        minio_client, bucket_name
-    )  # Bucket creation logged by caller if needed
+
+    if not minio_client.bucket_exists(bucket_name):
+        minio_client.make_bucket(bucket_name)
+        logger.info(f"Bucket {bucket_name} created")
+    else:
+        logger.info(f"Bucket {bucket_name} already exists")
 
     # Serialize model to BytesIO buffer
     with io.BytesIO() as buffer:
@@ -93,3 +60,4 @@ def upload_model_to_minio(model, bucket_name: str, file_name: str):
         minio_client.put_object(
             bucket_name, file_name, buffer, length=buffer.getbuffer().nbytes
         )
+    logger.info(f"Model {file_name} uploaded to MinIO")
