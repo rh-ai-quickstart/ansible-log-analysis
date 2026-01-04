@@ -1,0 +1,23 @@
+apiVersion: 1
+policies:
+  - orgId: 1
+    # Default notification policy - routes all alerts to the backend webhook
+    receiver: backend-inference-webhook
+    group_by:
+      - alertname
+      - status
+      - job
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h
+    routes:
+      # Route fatal ansible log alerts to the backend - TEMPORARILY DISABLED
+      # - receiver: backend-inference-webhook
+      #   matchers:
+      #     - alertname = "Fatal Ansible Logs"
+      #   continue: false
+      # Route failed ansible log alerts to the backend
+      - receiver: backend-inference-webhook
+        matchers:
+          - alertname = "Failed Ansible Logs"
+        continue: false

@@ -1,0 +1,15 @@
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: backend-inference-webhook
+    receivers:
+      - uid: backend-webhook-receiver
+        type: webhook
+        settings:
+          # Webhook URL with templated query parameters
+          # Uses range to safely iterate over alerts and provides defaults
+          url: >-
+            http://backend:8000/grafana-alert/?log_message={{ if .Alerts }}{{ urlquery (index .Alerts 0).Annotations.description }}{{ else }}Test+alert{{ end }}&detected_level=unknown&filename={{ if .Alerts }}{{ urlquery (or (index (index .Alerts 0).Labels "filename") "Unknown filename") }}{{ else }}Unknown+filename{{ end }}&job={{ if .Alerts }}{{ urlquery (or (index (index .Alerts 0).Labels "job") "ansible_logs") }}{{ else }}ansible_logs{{ end }}&service_name=grafana-alert&status={{ if .Alerts }}{{ urlquery (or (index (index .Alerts 0).Labels "status") "failed") }}{{ else }}failed{{ end }}&log_type={{ if .Alerts }}{{ urlquery (or (index (index .Alerts 0).Labels "log_type") "other") }}{{ else }}other{{ end }}
+          httpMethod: POST
+          message: ""
+        disableResolveMessage: false

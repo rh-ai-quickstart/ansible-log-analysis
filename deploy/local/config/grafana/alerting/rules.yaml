@@ -1,0 +1,137 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: ansible-log-alerts
+    folder: Ansible Logs
+    interval: 1m
+    rules:
+      # Alert for FATAL logs - TEMPORARILY DISABLED
+      # Uncomment to re-enable
+      # - uid: fatal-logs-alert
+      #   title: Fatal Ansible Logs
+      #   condition: C
+      #   data:
+      #     - refId: A
+      #       relativeTimeRange:
+      #         from: 300
+      #         to: 0
+      #       datasourceUid: loki
+      #       model:
+      #         expr: 'count_over_time({job="ansible_logs", status="fatal"}[5m])'
+      #         queryType: instant
+      #         refId: A
+      #     - refId: B
+      #       relativeTimeRange:
+      #         from: 300
+      #         to: 0
+      #       datasourceUid: __expr__
+      #       model:
+      #         datasource:
+      #           type: __expr__
+      #           uid: __expr__
+      #         expression: A
+      #         reducer: sum
+      #         refId: B
+      #         type: reduce
+      #     - refId: C
+      #       relativeTimeRange:
+      #         from: 300
+      #         to: 0
+      #       datasourceUid: __expr__
+      #       model:
+      #         datasource:
+      #           type: __expr__
+      #           uid: __expr__
+      #         expression: B
+      #         refId: C
+      #         type: threshold
+      #         conditions:
+      #           - evaluator:
+      #               params:
+      #                 - 0
+      #               type: gt
+      #             operator:
+      #               type: and
+      #             query:
+      #               params:
+      #                 - C
+      #             reducer:
+      #               params: []
+      #               type: last
+      #             type: query
+      #   noDataState: NoData
+      #   execErrState: Error
+      #   for: 0s
+      #   annotations:
+      #     summary: "Detected fatal Ansible log"
+      #     description: "A log with status 'fatal' has been detected"
+      #   labels:
+      #     severity: critical
+      #     alert_type: ansible_fatal
+      #     detected_level: fatal
+
+      # Alert for FAILED logs
+      # Labels from promtail: job, status, filename
+      - uid: failed-logs-alert
+        title: Failed Ansible Logs
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              # Query uses job and status labels from promtail config
+              expr: 'count_over_time({job="ansible_logs", status="failed"}[5m])'
+              queryType: instant
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: sum
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+        noDataState: NoData
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Detected failed Ansible log"
+          description: "A log with status 'failed' has been detected in job ansible_logs"
+        labels:
+          severity: warning
+          alert_type: ansible_failed
+          detected_level: error
