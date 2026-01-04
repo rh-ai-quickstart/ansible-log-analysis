@@ -67,7 +67,7 @@ spec:
             - sh
             - -c
             - |
-              {{ .Values.initCommand }}
+              sleep 10 && python backend_init_pipeline.py
           env:
           {{- if .Values.env }}
             {{- toYaml .Values.env | nindent 12 }}
@@ -83,32 +83,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          volumeMounts:
-            - name: init-sync
-              mountPath: /init-sync
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        - name: scale-deployment
-          image: quay.io/openshift/origin-cli:4.15
-          command:
-            - sh
-            - -c
-            - |
-              echo "Waiting for init-pipeline to complete..."
-              while [ ! -f /init-sync/done ]; do
-                sleep 5
-              done
-              echo "Backend init job pipeline completed successfully!"
-              echo "Init complete, scaling deployment to 1 replica..."
-              oc scale deployment {{ include "backend.fullname" . }} --replicas=1 -n {{ .Release.Namespace }}
-              echo "Deployment scaled successfully!"
-          volumeMounts:
-            - name: init-sync
-              mountPath: /init-sync
-      volumes:
-        - name: init-sync
-          emptyDir: {}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

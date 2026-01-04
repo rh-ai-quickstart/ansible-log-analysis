@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
-replicaCount: 0
+replicaCount: 1
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
@@ -91,8 +91,6 @@ resources:
     cpu: 500m
     memory: 1Gi
     ephemeral-storage: 2Gi
-
-initCommand: "python backend_init_pipeline.py && touch /init-sync/done"
 
 initResources:
   limits:
