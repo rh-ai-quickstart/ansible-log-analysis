@@ -1,4 +1,5 @@
 from typing import List, Optional, Tuple
+from alm.llm import stream_with_fallback
 from sklearn.base import ClusterMixin
 import os
 from sentence_transformers import SentenceTransformer
@@ -87,6 +88,7 @@ async def suggest_step_by_step_solution(
     log: str,
     llm: ChatOpenAI,
     context: Optional[str] = None,
+    streaming: bool = False,
 ):
     llm_suggest_step_by_step_solution = llm.with_structured_output(
         SuggestStepByStepSolutionSchema
@@ -103,23 +105,29 @@ async def suggest_step_by_step_solution(
             log_summary=log_summary,
         )
 
-    log_suggest_step_by_step_solution = await llm_suggest_step_by_step_solution.ainvoke(
-        [
-            {
-                "role": "system",
-                "content": suggest_step_by_step_solution_system_message,
-            },
-            {
-                "role": "user",
-                "content": user_msg,
-            },
-        ]
-    )
-    return (
-        log_suggest_step_by_step_solution.root_cause_analysis
-        + "\n\n"
-        + log_suggest_step_by_step_solution.step_by_step_solution
-    )
+    messages = [
+        {
+            "role": "system",
+            "content": suggest_step_by_step_solution_system_message,
+        },
+        {
+            "role": "user",
+            "content": user_msg,
+        },
+    ]
+    if streaming:
+        log_suggest_step_by_step_solution = await stream_with_fallback(llm, messages)
+        return log_suggest_step_by_step_solution
+    else:
+        log_suggest_step_by_step_solution = (
+            await llm_suggest_step_by_step_solution.ainvoke(messages)
+        )
+
+        return (
+            log_suggest_step_by_step_solution.root_cause_analysis
+            + "\n\n"
+            + log_suggest_step_by_step_solution.step_by_step_solution
+        )
 
 
 def _embed_logs(logs: List[str]):

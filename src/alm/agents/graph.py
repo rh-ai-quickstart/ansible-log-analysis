@@ -60,7 +60,7 @@ async def suggest_step_by_step_solution_node(
         logger.error("Exception in suggest_step_by_step_solution_node: %s", e)
         logger.warning("Continuing **without context** due to error.")
         step_by_step_solution = await suggest_step_by_step_solution(
-            log_summary, log, llm
+            log_summary, log, llm, streaming=True
         )
     return Command(goto=END, update={"stepByStepSolution": step_by_step_solution})
 

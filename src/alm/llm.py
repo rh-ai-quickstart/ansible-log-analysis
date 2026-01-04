@@ -1,6 +1,10 @@
 import os
-
+from typing import List, Dict
 from langchain_openai import ChatOpenAI
+
+from alm.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Constants for API configuration
 API_KEY: str = os.getenv("OPENAI_API_TOKEN")
@@ -28,3 +32,34 @@ def get_llm(model: str = MODEL, temperature: float = TEMPERATURE):
         temperature=temperature,
     )
     return llm
+
+
+def get_streaming_llm(model: str = MODEL, temperature: float = TEMPERATURE):
+    """Returns an LLM configured for streaming responses."""
+    llm = ChatOpenAI(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+        model=model,
+        temperature=temperature,
+        streaming=True,
+    )
+    return llm
+
+
+async def stream_with_fallback(llm, messages: List[Dict[str, str]]):
+    """
+    Asynchronously stream response and collect chunks.
+    Returns whatever was received even if an error occurs mid-stream.
+    """
+    collected_output = []
+
+    try:
+        async for chunk in llm.astream(messages):
+            if chunk.content:
+                collected_output.append(chunk.content)
+    except Exception as e:
+        # Log the error but continue with what we have
+        logger.error(f"Stream interrupted: {e}")
+        if len(collected_output) == 0:
+            raise e
+    return "".join(collected_output)
