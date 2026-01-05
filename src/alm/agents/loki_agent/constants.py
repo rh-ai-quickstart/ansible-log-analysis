@@ -21,9 +21,15 @@ IDENTIFY_MISSING_DATA_PROMPT_PATH = (
 # LOGQL QUERY TEMPLATES
 # ==============================================================================
 
-LOGQL_FILE_NAME_QUERY_TEMPLATE = '{{filename=~".*{file_name}$"}}'
-LOGQL_JOB_WILDCARD_QUERY = '{job=~".+"}'
+LOGQL_FILE_NAME_QUERY_TEMPLATE = '{{filename=~".*{file_name}$"'  # Opening brace only, closing brace added where needed
+LOGQL_SERVICE_NAME_WILDCARD_QUERY = '{service_name=~".+"}'
 LOGQL_LEVEL_FILTER_TEMPLATE = "| detected_level=`{level}`"
+LOGQL_STATUS_FILTER_TEMPLATE = (
+    'status=~"{status}"'  # Status is a LABEL (goes in {} selector)
+)
+LOGQL_LOG_TYPE_FILTER_TEMPLATE = (
+    '| log_type=~"{log_type}"'  # log_type is structured metadata (goes after |)
+)
 LOGQL_TEXT_SEARCH_TEMPLATE = '|= "{text}"'
 
 
@@ -48,7 +54,9 @@ TIME_UNIT_MAP = {
     "d": "days",
 }
 
-RELATIVE_TIME_PATTERN = r"(-?)(\d+)([smhd])"
+# Pattern supports both backward (-) and forward (+) relative times
+# Examples: "-5m" (5 minutes before), "+10m" (10 minutes after), "1h" (1 hour before)
+RELATIVE_TIME_PATTERN = r"([-+]?)(\d+)([smhd])"
 
 
 # ==============================================================================

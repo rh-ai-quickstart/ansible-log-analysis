@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 import os
 
@@ -136,7 +136,7 @@ class LokiDataLoader(DataLoader):
                 else None
             )
             database_timestamp = datetime.fromtimestamp(
-                int(database_timestamp_str) / 1e9
+                int(database_timestamp_str) / 1e9, tz=timezone.utc
             )
 
             labels["database_timestamp"] = database_timestamp

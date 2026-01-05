@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN, MeanShift, AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_distances
 import joblib
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from alm.agents.output_scheme import (
     SummarySchema,
     ClassifySchema,
@@ -131,17 +131,51 @@ async def suggest_step_by_step_solution(
 
 
 def _embed_logs(logs: List[str]):
+    # Check if remote embeddings API is configured
+    api_key = os.getenv("EMBEDDINGS_LLM_API_KEY")
+    base_url = os.getenv("EMBEDDINGS_LLM_URL")
+    embedding_model_name = os.getenv("EMBEDDINGS_LLM_MODEL_NAME")
+    texts = [summary[-50:] for summary in logs]
+
+    if api_key and base_url and embedding_model_name:
+        # Use remote OpenAI-compatible embeddings API
+        return _embed_logs_remote(texts, api_key, base_url, embedding_model_name)
+    else:
+        # Use local SentenceTransformer model
+        return _embed_logs_local(texts)
+
+
+def _embed_logs_remote(
+    texts: List[str], api_key: str, base_url: str, embedding_model_name: str
+):
+    logger.debug("Using remote embeddings API")
+
+    embeddings_client = OpenAIEmbeddings(
+        api_key=api_key,
+        base_url=base_url,
+        model=embedding_model_name,
+    )
+
+    # Generate embeddings
+    embeddings = embeddings_client.embed_documents(texts)
+
+    # Convert to numpy array
+    embeddings = np.array(embeddings)
+    logger.debug("finished embeddings")
+    return embeddings
+
+
+def _embed_logs_local(texts: List[str]):
+    logger.debug("Using local SentenceTransformer model")
     model_name = os.getenv("SENTENCE_TRANSFORMER_MODEL_NAME")
     encoder = SentenceTransformer(model_name)
-
     embeddings = encoder.encode(
-        [summary[-50:] for summary in logs],
+        texts,
         convert_to_numpy=True,
         show_progress_bar=True,
         # batch_size=10,
     )
     logger.debug("finished embeddings")
-
     return embeddings
 
 

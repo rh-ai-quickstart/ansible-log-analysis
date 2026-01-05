@@ -10,7 +10,6 @@ from alm.agents.loki_agent.constants import (
     DEFAULT_LINE_ABOVE,
 )
 from alm.agents.loki_agent.schemas.inputs import (
-    DetectedLevel,
     FileLogSchema,
     SearchTextSchema,
     LogLinesAboveSchema,
@@ -22,7 +21,7 @@ from alm.agents.loki_agent.schemas.outputs import (
     LokiAgentOutput,
     IdentifyMissingDataSchema,
 )
-from alm.models import LogLabels, LogEntry
+from alm.models import LogLabels, LogEntry, DetectedLevel
 
 __all__ = [
     # Inputs
