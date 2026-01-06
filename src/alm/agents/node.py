@@ -114,7 +114,7 @@ async def suggest_step_by_step_solution(
     if streaming:
         return await stream_with_fallback(llm, messages)
     else:
-        return await llm.ainvoke(messages).content
+        return (await llm.ainvoke(messages)).content
 
 
 def _embed_logs(logs: List[str]):
