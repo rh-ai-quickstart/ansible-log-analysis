@@ -14,8 +14,7 @@ COPY pyproject.toml uv.lock ./
 
 # Install dependencies only (not the project itself yet)
 # Set environment to prevent CUDA dependencies and increase timeout
-RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_HTTP_TIMEOUT=600 \
+RUN UV_HTTP_TIMEOUT=600 \
     TORCH_CUDA_ARCH_LIST="" \
     uv sync --frozen --no-install-project --no-dev
 
@@ -25,8 +24,7 @@ COPY src/ ./src/
 COPY data/logs/failed/ ./data/logs/failed/
 
 # Install the project itself (production mode, not editable)
-RUN --mount=type=cache,target=/root/.cache/uv \
-    UV_HTTP_TIMEOUT=600 \
+RUN UV_HTTP_TIMEOUT=600 \
     TORCH_CUDA_ARCH_LIST="" \
     uv sync --frozen --no-dev --no-editable
 
