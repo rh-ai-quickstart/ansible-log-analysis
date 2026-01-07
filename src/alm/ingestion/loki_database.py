@@ -71,6 +71,11 @@ class LokiDataLoader(DataLoader):
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.get(endpoint, params=params)
                     response.raise_for_status()
+                # TODO FIXME tmp fix until alloy service is allive
+                await asyncio.sleep(15)
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.get(endpoint, params=params)
+                    response.raise_for_status()
                 return response.json()
             except (
                 httpx.TimeoutException,

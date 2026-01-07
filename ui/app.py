@@ -1,10 +1,18 @@
 import os
+import logging
 import gradio as gr
 import httpx
 import markdown
 from datetime import datetime
 from typing import List, Dict, Any
 
+logger = logging.getLogger(__name__)
+logger.name = "ui"
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+)
 
 # Configuration
 BACKEND_URL = os.getenv("BACKEND_URL")
@@ -30,7 +38,7 @@ def extract_unique_label_keys(alerts: List[Dict[str, Any]]) -> List[str]:
     """Extract unique label keys from all alerts."""
     label_keys = set()
     for alert in alerts:
-        labels = alert.get("labels", {})
+        labels = alert.get("log_labels", {})
         label_keys.update(labels.keys())
     return sorted(list(label_keys))
 
@@ -41,7 +49,7 @@ def extract_unique_label_values(
     """Extract unique values for a specific label key from all alerts."""
     label_values = set()
     for alert in alerts:
-        labels = alert.get("labels", {})
+        labels = alert.get("log_labels", {})
         if label_key in labels:
             label_values.add(labels[label_key])
     return sorted(list(label_values))
@@ -56,7 +64,7 @@ def filter_alerts_by_label(
 
     filtered_alerts = []
     for alert in alerts:
-        labels = alert.get("labels", {})
+        labels = alert.get("log_labels", {})
         if labels.get(label_key) == label_value:
             filtered_alerts.append(alert)
 
@@ -71,7 +79,7 @@ async def fetch_all_alerts() -> List[Dict[str, Any]]:
             response.raise_for_status()
             return response.json()
     except Exception as e:
-        print(f"Error fetching all alerts: {e}")
+        logger.error(f"Error fetching all alerts: {e}")
         return []
 
 
@@ -85,7 +93,7 @@ async def fetch_alerts_by_expert_class(expert_class: str) -> List[Dict[str, Any]
             response.raise_for_status()
             return response.json()
     except Exception as e:
-        print(f"Error fetching alerts for expert class {expert_class}: {e}")
+        logger.error(f"Error fetching alerts for expert class {expert_class}: {e}")
         return []
 
 
@@ -95,8 +103,8 @@ async def fetch_unique_clusters_by_expert_class(
     """Fetch unique log clusters for an expert class from the backend."""
     try:
         async with httpx.AsyncClient() as client:
-            print(
-                f"{BACKEND_URL}/grafana-alert/unique-clusters/?expert_class={expert_class}"
+            logger.debug(
+                f"Fetching unique clusters: {BACKEND_URL}/grafana-alert/unique-clusters/?expert_class={expert_class}"
             )
             response = await client.get(
                 f"{BACKEND_URL}/grafana-alert/unique-clusters/?expert_class={expert_class}"
@@ -104,7 +112,9 @@ async def fetch_unique_clusters_by_expert_class(
             response.raise_for_status()
             return response.json()
     except Exception as e:
-        print(f"Error fetching unique clusters for expert class {expert_class}: {e}")
+        logger.error(
+            f"Error fetching unique clusters for expert class {expert_class}: {e}"
+        )
         return []
 
 
@@ -114,11 +124,8 @@ async def fetch_alerts_by_expert_class_and_cluster(
     """Fetch alerts filtered by expert class and log cluster from the backend."""
     try:
         async with httpx.AsyncClient() as client:
-            print(
-                f"{BACKEND_URL}/grafana-alert/by-expert-class-and-log-cluster/?expert_class={expert_class}&log_cluster={log_cluster}"
-            )
-            print(
-                "http://localhost:8000/grafana-alert/by-expert-class/?expert_class=Kubernetes%20%2F%20OpenShift%20Cluster%20Admins"
+            logger.debug(
+                f"Fetching alerts by class and cluster: {BACKEND_URL}/grafana-alert/by-expert-class-and-log-cluster/?expert_class={expert_class}&log_cluster={log_cluster}"
             )
             response = await client.get(
                 f"{BACKEND_URL}/grafana-alert/by-expert-class-and-log-cluster/?expert_class={expert_class}&log_cluster={log_cluster}"
@@ -126,7 +133,7 @@ async def fetch_alerts_by_expert_class_and_cluster(
             response.raise_for_status()
             return response.json()
     except Exception as e:
-        print(
+        logger.error(
             f"Error fetching alerts for expert class {expert_class} and cluster {log_cluster}: {e}"
         )
         return []
@@ -343,15 +350,25 @@ def generate_clusters_html(
 
             # Fetch logs for this specific cluster
             try:
-                cluster_alerts = loop.run_until_complete(
-                    fetch_alerts_by_expert_class_and_cluster(expert_class, log_cluster)
-                )
+                # For "Select All", filter from already-fetched alerts instead of API call
+                if expert_class == "Select All":
+                    cluster_alerts = [
+                        alert
+                        for alert in current_category_alerts
+                        if alert.get("logCluster") == log_cluster
+                    ]
+                else:
+                    cluster_alerts = loop.run_until_complete(
+                        fetch_alerts_by_expert_class_and_cluster(
+                            expert_class, log_cluster
+                        )
+                    )
                 cluster_logs_formatted = (
                     format_alerts_for_display(cluster_alerts) if cluster_alerts else []
                 )
                 logs_count = len(cluster_logs_formatted)
             except Exception as e:
-                print(f"Error fetching logs for cluster {log_cluster}: {e}")
+                logger.error(f"Error fetching logs for cluster {log_cluster}: {e}")
                 cluster_logs_formatted = []
                 logs_count = 0
 
@@ -373,10 +390,10 @@ def generate_clusters_html(
 
                     # Format labels
                     labels_html = ""
-                    if log_full_alert.get("labels"):
+                    if log_full_alert.get("log_labels"):
                         labels_list = [
                             f'<span style="display: inline-block; background: rgba(30, 41, 59, 0.8); color: #e2e8f0; border: 1px solid #475569; padding: 0.25rem 0.5rem; border-radius: 0.375rem; margin: 0.125rem; font-size: 0.875rem;"><strong style="color: #cbd5e1;">{k}:</strong> {v}</span>'
-                            for k, v in log_full_alert.get("labels", {}).items()
+                            for k, v in log_full_alert.get("log_labels", {}).items()
                         ]
                         labels_html = "".join(labels_list)
                     else:
@@ -443,7 +460,7 @@ def generate_clusters_html(
                                         <span style="font-size: 1rem;">📄</span>
                                         <strong style="color: #f1f5f9; font-size: 0.95rem;">Full Log Message</strong>
                                     </div>
-                                    <div style="background: rgba(15, 23, 42, 0.9); color: #e2e8f0; border: 1px solid #374151; border-radius: 0.375rem; padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.4; white-space: pre-wrap; max-height: 250px; overflow-y: auto;">{
+                                    <div style="background: rgba(15, 23, 42, 0.9); color: #e2e8f0; border: 1px solid #374151; border-radius: 0.375rem; padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.4; white-space: pre-wrap;">{
                         log_message
                     }</div>
                                 </div>
@@ -455,7 +472,7 @@ def generate_clusters_html(
                                         <span style="font-size: 1rem;">🔧</span>
                                         <strong style="color: #f1f5f9; font-size: 0.95rem;">Solution</strong>
                                     </div>
-                                    <div style="background: rgba(16, 185, 129, 0.1); color: #e2e8f0; border: 1px solid #10b981; border-radius: 0.375rem; padding: 1rem; font-size: 0.8rem; line-height: 1.5; max-height: 300px; overflow-y: auto;">
+                                    <div class="markdown-content" style="background: rgba(16, 185, 129, 0.1); color: #e2e8f0; border: 1px solid #10b981; border-radius: 0.375rem; padding: 1rem; font-size: 0.8rem; line-height: 1.5;">
                                         {step_by_step_solution_html}
                                     </div>
                                 </div>
@@ -550,7 +567,7 @@ def generate_clusters_html(
         
         /* When cluster checkbox is checked: show content */
         input[id^="cluster-toggle-"]:checked ~ .cluster-logs-content {
-            max-height: 2000px !important;
+            max-height: none !important;
             padding: 0 !important;
             border-width: 2px !important;
             border-color: #475569 !important;
@@ -597,7 +614,7 @@ def generate_clusters_html(
         
         /* When log checkbox is checked: show details */
         input[id^="cluster-"][id*="-log-"]:checked ~ .cluster-log-details {
-            max-height: 800px !important;
+            max-height: none !important;
             padding: 0 1rem !important;
         }
         
@@ -676,10 +693,10 @@ def generate_logs_html(alerts_data: List[Dict[str, Any]]) -> str:
 
         # Format labels
         labels_html = ""
-        if full_alert.get("labels"):
+        if full_alert.get("log_labels"):
             labels_list = [
                 f'<span style="display: inline-block; background: rgba(30, 41, 59, 0.8); color: #e2e8f0; border: 1px solid #475569; padding: 0.25rem 0.5rem; border-radius: 0.375rem; margin: 0.125rem; font-size: 0.875rem;"><strong style="color: #cbd5e1;">{k}:</strong> {v}</span>'
-                for k, v in full_alert.get("labels", {}).items()
+                for k, v in full_alert.get("log_labels", {}).items()
             ]
             labels_html = "".join(labels_list)
         else:
@@ -769,7 +786,7 @@ def generate_logs_html(alerts_data: List[Dict[str, Any]]) -> str:
                         <span style="font-size: 1.25rem;">📄</span>
                         <strong style="color: #f1f5f9; font-size: 1.1rem;">Full Log Message</strong>
                     </div>
-                    <div style="background: rgba(30, 41, 59, 0.8); color: #e2e8f0; border: 1px solid #475569; border-radius: 0.5rem; padding: 1rem; font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace; font-size: 0.875rem; line-height: 1.5; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">{
+                    <div style="background: rgba(30, 41, 59, 0.8); color: #e2e8f0; border: 1px solid #475569; border-radius: 0.5rem; padding: 1rem; font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace; font-size: 0.875rem; line-height: 1.5; white-space: pre-wrap;">{
             log_message
         }</div>
                 </div>
@@ -781,7 +798,7 @@ def generate_logs_html(alerts_data: List[Dict[str, Any]]) -> str:
                         <span style="font-size: 1.25rem;">🔧</span>
                         <strong style="color: #f1f5f9; font-size: 1.1rem;">Step-by-Step Solution</strong>
                     </div>
-                    <div style="background: rgba(16, 185, 129, 0.1); color: #e2e8f0; border: 2px solid #10b981; border-radius: 0.5rem; padding: 1.5rem; font-size: 0.875rem; line-height: 1.6; max-height: 500px; overflow-y: auto; position: relative;">
+                    <div class="markdown-content" style="background: rgba(16, 185, 129, 0.1); color: #e2e8f0; border: 2px solid #10b981; border-radius: 0.5rem; padding: 1.5rem; font-size: 0.875rem; line-height: 1.6; position: relative;">
                         <div style="position: absolute; top: 0.5rem; right: 0.5rem; background: #10b981; color: white; padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600;">SOLUTION</div>
                         {step_by_step_solution_html}
                     </div>
@@ -826,7 +843,7 @@ def generate_logs_html(alerts_data: List[Dict[str, Any]]) -> str:
         
         /* When checkbox is checked: show details */
         input[type="checkbox"]:checked ~ .log-details-content {
-            max-height: 1000px !important;
+            max-height: none !important;
             padding: 1.5rem !important;
             border-width: 2px !important;
             border-color: #475569 !important;
@@ -1030,8 +1047,6 @@ def create_interface():
     
     /* Log items styling */
     .logs-container {
-        max-height: 80vh;
-        overflow-y: auto;
         padding: 0.5rem;
         position: relative;
     }
@@ -1173,6 +1188,75 @@ def create_interface():
     .log-details-content em {
         color: #cbd5e1 !important;
         font-style: italic !important;
+    }
+    
+    /* Markdown content styling for solutions */
+    .markdown-content h1,
+    .markdown-content h2,
+    .markdown-content h3,
+    .markdown-content h4,
+    .markdown-content h5,
+    .markdown-content h6 {
+        color: #f1f5f9 !important;
+        margin: 1rem 0 0.5rem 0 !important;
+        font-weight: 600 !important;
+    }
+    
+    .markdown-content p {
+        margin: 0.5rem 0 !important;
+    }
+    
+    .markdown-content ul,
+    .markdown-content ol {
+        margin: 0.5rem 0 !important;
+        padding-left: 1.5rem !important;
+    }
+    
+    .markdown-content li {
+        margin: 0.25rem 0 !important;
+    }
+    
+    .markdown-content code {
+        background: rgba(15, 23, 42, 0.9) !important;
+        color: #fbbf24 !important;
+        padding: 0.2rem 0.4rem !important;
+        border-radius: 0.25rem !important;
+        font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace !important;
+        font-size: 0.85em !important;
+        border: 1px solid #475569 !important;
+    }
+    
+    .markdown-content pre {
+        background: rgba(15, 23, 42, 0.95) !important;
+        border: 2px solid #475569 !important;
+        border-radius: 0.5rem !important;
+        padding: 1rem !important;
+        margin: 0.75rem 0 !important;
+        overflow-x: auto !important;
+    }
+    
+    .markdown-content pre code {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        color: #e2e8f0 !important;
+        font-size: 0.85rem !important;
+        line-height: 1.5 !important;
+        display: block !important;
+        white-space: pre !important;
+    }
+    
+    .markdown-content strong {
+        color: #f1f5f9 !important;
+        font-weight: 600 !important;
+    }
+    
+    .markdown-content blockquote {
+        border-left: 3px solid #10b981 !important;
+        background: rgba(16, 185, 129, 0.05) !important;
+        padding: 0.5rem 1rem !important;
+        margin: 0.5rem 0 !important;
+        border-radius: 0 0.25rem 0.25rem 0 !important;
     }
     
     /* Footer styling */
@@ -1336,8 +1420,8 @@ demo = create_interface()
 
 def main():
     """Main function to launch the Gradio app."""
-    print("🚀 Starting Ansible Logs Viewer...")
-    print(f"Backend URL: {BACKEND_URL}")
+    logger.info("🚀 Starting Ansible Logs Viewer...")
+    logger.info(f"Backend URL: {BACKEND_URL}")
 
     # Create and launch the interface
 

@@ -59,6 +59,7 @@ class JSONFormatter(logging.Formatter):
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
+            "service": "backend",
             "logger": record.name,
             "message": record.getMessage(),
             "location": {
