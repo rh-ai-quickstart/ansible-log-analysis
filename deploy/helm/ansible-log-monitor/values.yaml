@@ -442,17 +442,18 @@ alloy:
   controller:
     type: deployment  # Changed from the default DaemonSet to Deployment (only need 1 pod for static file collection)
     replicas: 1
-    volumes:
-      extra:
-        - name: ansible-logs
-          emptyDir: {}   # Uses emptyDir, logs will be copied via 'oc cp' (see Makefile load-logs-to-alloy)
+    # volumes: # Commented out to avoid emptyDir mount (logs are now bundled in alloy image as workaround)
+    #   extra:
+    #     - name: ansible-logs
+    #       emptyDir: {}   # Uses emptyDir, logs will be copied via 'oc cp' (see Makefile load-logs-to-alloy)
 
   alloy:
-    # Volume mounts for the Alloy container
-    mounts:
-      extra:
-        - name: ansible-logs
-          mountPath: /var/log/ansible_logs
+    # Commented out to avoid emptyDir mount (logs are now bundled in alloy image as workaround)
+    # # Volume mounts for the Alloy container
+    # mounts:
+    #   extra:
+    #     - name: ansible-logs
+    #       mountPath: /var/log/ansible_logs
     configMap:
       # NOTE: This config filters logs to only aap-mock pods.
       # If aap-mock.enabled is set to false, no logs will be collected.
