@@ -144,14 +144,7 @@ install: namespace
 	$(call prompt_openai_credentials)
 	@echo "🚀 Installing Ansible Log Monitor in namespace $(NAMESPACE)..."
 	@oc project $(NAMESPACE)
-	@$(MAKE) -s load-logs-to-alloy & \
-	bg_pid=$$!; \
-	if ! helm install $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args); then \
-		echo "Helm install failed, killing $$bg_pid"; \
-		kill $$bg_pid 2>/dev/null; \
-		exit 1; \
-	fi; \
-	wait $$bg_pid
+	@helm install $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args)
 	@echo "✅ Helm install complete"
 
 # Uninstall the deployment and clean up (NAMESPACE optional, defaults to current project)
@@ -215,6 +208,11 @@ port-forward-grafana:
 # AAP Mock Log Loading
 # =============================================================================
 # Loads all logs from data/logs/ directory (including subdirectories)
+
+# As a workaround the logs already includede in alloy as part of its image, so this loading not called.
+# When aap-mock is connected, we'll probably include the logs in its image, 
+# but keeping this loading in case we don't want to include the data in the image.
+
 
 .PHONY: wait-for-aap-mock
 wait-for-aap-mock: ## ⏳ Wait for aap-mock pod to be ready
@@ -304,45 +302,3 @@ stop-replay: ## ⏹️ Stop log replay
 	fi; \
 	curl -sf -X POST "http://$$ROUTE/api/replay/stop" || true; \
 	echo "✅ Replay stopped"
-
-# =============================================================================
-# Alloy Log Loading
-# =============================================================================
-# Loads all logs from data/logs/ directory (including subdirectories) to Alloy
-# This is a workaround to collect logs from aap-mock container (work in progress)
-# TODO: Remove this when we have a way to collect logs from aap-mock container (work in progress)
-
-.PHONY: load-logs-to-alloy
-load-logs-to-alloy: ## 📂 Load logs from data/logs/ to alloy pod
-	$(call check_namespace)
-	@for i in $$(seq 1 180); do \
-		POD=$$(oc get pod -n $(NAMESPACE) -l app.kubernetes.io/name=alloy -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-		if [ -n "$$POD" ]; then \
-			STATUS=$$(oc get pod -n $(NAMESPACE) $$POD -o jsonpath='{.status.phase}' 2>/dev/null); \
-			READY=$$(oc get pod -n $(NAMESPACE) $$POD -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null); \
-			if [ "$$STATUS" = "Running" ] && [ "$$READY" = "True" ]; then \
-				exit 0; \
-			fi; \
-		fi; \
-		sleep 1; \
-	done; \
-	exit 1
-	@echo "📂 Loading logs to alloy..."
-	@POD=$$(oc get pod -n $(NAMESPACE) -l app.kubernetes.io/name=alloy -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-	if [ -z "$$POD" ]; then \
-		echo "❌ Error: alloy pod not found. Is it running?"; \
-		echo "   Run 'make cluster/install' first."; \
-		exit 1; \
-	fi; \
-	SOURCE_DIR=../../data/logs; \
-	echo "   Found pod: $$POD"; \
-	echo "   Source: $$SOURCE_DIR/"; \
-	if [ ! -d "$$SOURCE_DIR" ]; then \
-		echo "   ⚠️  Directory $$SOURCE_DIR not found"; \
-		exit 1; \
-	fi; \
-	echo "   Copying logs to pod (preserving directory structure)..."; \
-	oc cp -n $(NAMESPACE) "$$SOURCE_DIR/." "$$POD:/var/log/ansible_logs/"; \
-	echo "   Verifying copied files..."; \
-	COPIED_COUNT=$$(oc exec -n $(NAMESPACE) $$POD -- find /var/log/ansible_logs -type f \( -name "*.txt" -o -name "*.log" \) 2>/dev/null | wc -l | tr -d ' '); \
-	echo "   $$COPIED_COUNT log files synced to /var/log/ansible_logs/"

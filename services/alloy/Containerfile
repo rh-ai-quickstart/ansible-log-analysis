@@ -1,0 +1,16 @@
+# NOTE: Build this from the project root: 
+#       podman build -f services/alloy/Containerfile -t quay.io/rh-ai-quickstart/alm-alloy:latest ../../
+
+# Stage 1: Builder - Copy log files from project
+FROM registry.access.redhat.com/ubi9/ubi-minimal AS builder
+
+WORKDIR /staging
+COPY data/logs/ ./logs/
+
+# Stage 2: Final Alloy image with logs
+FROM docker.io/grafana/alloy:latest
+
+USER root
+RUN mkdir -p /var/log/ansible_logs
+COPY --from=builder /staging/logs/ /var/log/ansible_logs/
+USER alloy

@@ -434,6 +434,11 @@ loki:
 
 alloy:
   fullnameOverride: alloy
+  image:
+    registry: quay.io # Intentionaly separate to override the default alloy registry
+    repository: rh-ai-quickstart/alm-alloy
+    tag: "latest"
+    pullPolicy: Always
   controller:
     type: deployment  # Changed from the default DaemonSet to Deployment (only need 1 pod for static file collection)
     replicas: 1
