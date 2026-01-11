@@ -11,6 +11,7 @@ from index_loader import RAGIndexLoader
 import time
 import logging
 import httpx
+import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -75,32 +76,77 @@ class QueryResponse(BaseModel):
 
 
 async def load_index():
-    """Load index from MinIO once at startup (initContainer ensures it's ready)."""
+    """Load index from MinIO. Returns True if successful, False otherwise."""
     global index_loader
 
     model_name = os.getenv("RAG_MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
     bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
 
-    print("Initializing RAG index loader...")
-    index_loader = RAGIndexLoader(
-        bucket_name=bucket_name,
-        model_name=model_name,
-    )
+    # Initialize index loader if not already done
+    if index_loader is None:
+        print("Initializing RAG index loader...")
+        index_loader = RAGIndexLoader(
+            bucket_name=bucket_name,
+            model_name=model_name,
+        )
 
     try:
         await index_loader.load_index()
         print("✓ RAG index loaded successfully")
+        return True
     except Exception as e:
         print(f"✗ Failed to load RAG index: {e}")
-        raise  # Fail startup if index can't be loaded (initContainer should prevent this)
+        return False
+
+
+async def poll_for_index():
+    """Background task that polls for RAG index every 20 seconds."""
+    global index_loader
+
+    poll_interval = 20  # seconds
+
+    while True:
+        try:
+            # Check if index is already loaded
+            if index_loader is not None and index_loader.index is not None:
+                # Index is loaded, check periodically if it needs reloading
+                await asyncio.sleep(poll_interval)
+                continue
+
+            # Try to load the index
+            logger.info("Polling for RAG index...")
+            success = await load_index()
+
+            if success:
+                logger.info("RAG index loaded successfully via polling")
+            else:
+                logger.debug(
+                    "RAG index not available yet, will retry in %d seconds",
+                    poll_interval,
+                )
+
+        except Exception as e:
+            logger.error("Error during index polling: %s", e, exc_info=True)
+
+        # Wait before next poll
+        await asyncio.sleep(poll_interval)
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Load index once at startup (initContainer ensures it's ready)."""
+    """Initialize service and start polling for index."""
     global embedding_client
 
-    await load_index()
+    # Try to load index, but don't fail if it doesn't exist
+    index_loaded = await load_index()
+    if not index_loaded:
+        logger.info(
+            "RAG index not found at startup. Will poll for index in background..."
+        )
+
+    # Always start background polling task (it will sleep if index is already loaded)
+    asyncio.create_task(poll_for_index())
+    logger.info("Started background polling task for RAG index (every 20 seconds)")
 
     # Initialize persistent HTTP client for embedding service with connection pooling
     embedding_url = os.getenv("EMBEDDINGS_LLM_URL", "http://alm-embedding:8080")
