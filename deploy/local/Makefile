@@ -146,11 +146,11 @@ backend: ## ⚙️ Start Backend (FastAPI)
 
 ui: ## 🖥️ Start UI (Gradio)
 	@echo "   Starting UI Interface..."
-	@cd ../../ui && uv run gradio app.py &
+	@cd ../../services/ui && uv run gradio app.py &
 
 annotation: ## 🏷️ Start Annotation UI (Gradio)  
 	@echo "   Starting Annotation UI..."
-	@cd ../.. && uv run gradio annotation_interface/app.py &
+	@cd ../../services/annotation_interface && uv run gradio app.py &
 
 
 stop: ## 🛑 Stop all services

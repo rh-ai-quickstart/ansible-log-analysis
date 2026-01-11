@@ -21,9 +21,9 @@ jobs:
         with:
           filters: |
             ui:
-              - 'ui/**'
+              - 'services/ui/**'
             annotation:
-              - 'annotation_interface/**'
+              - 'services/annotation_interface/**'
             clustering:
               - 'services/clustering/**'
 
@@ -36,10 +36,10 @@ jobs:
       matrix:
         include:
           - name: alm-ui
-            context: ui
+            context: services/ui
             image-name: alm-ui
           - name: alm-annotation-interface
-            context: annotation_interface
+            context: services/annotation_interface
             image-name: alm-annotation-interface
           - name: alm-clustering
             context: services/clustering
