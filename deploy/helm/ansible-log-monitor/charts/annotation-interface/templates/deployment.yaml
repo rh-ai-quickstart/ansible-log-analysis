@@ -71,6 +71,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          envFrom:
+            - secretRef:
+                name: model-secret
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
