@@ -7,11 +7,14 @@ import gradio as gr
 import json
 import logging
 import os
+import pandas as pd
 from datetime import datetime
-from typing import Tuple
+from typing import Tuple, Dict, Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 import psycopg2
+
+from test_end_to_end import run_evaluation
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -30,6 +33,10 @@ class DataAnnotationApp:
         self.all_data = []  # Store all data before cluster filtering
         self.feedback_data = []
         self.show_cluster_sample = False  # Toggle state for cluster sampling
+
+        # Evaluation results storage: dict keyed by filename
+        self.evaluation_results: Dict[str, Dict[str, Any]] = {}
+        self.eval_summary: Dict[str, Any] = {"total": 0, "success": 0, "run": False}
 
         # Get table name from environment variable
         self.table_name = os.getenv("ALERTS_TABLE_NAME", "grafanaalert")
@@ -124,12 +131,41 @@ class DataAnnotationApp:
         try:
             if os.path.exists(self.feedback_file):
                 with open(self.feedback_file, "r") as f:
+                    logger.info(f"Loading feedback from {self.feedback_file}")
                     self.feedback_data = json.load(f)
+
+                # Restore evaluation results from saved feedback data
+                self._restore_eval_results_from_feedback()
             else:
                 self.feedback_data = []
+                logger.info(f"No feedback file found at {self.feedback_file}")
         except Exception as e:
             logger.error(f"Error loading feedback: {e}")
             self.feedback_data = []
+
+    def _restore_eval_results_from_feedback(self) -> None:
+        """Restore evaluation results from saved feedback data."""
+        eval_count = 0
+        success_count = 0
+
+        for entry in self.feedback_data:
+            if "eval_metrics" in entry:
+                filename = entry.get("filename", "")
+                self.evaluation_results[filename] = {
+                    "success": entry.get("eval_success", False),
+                    "metrics": entry.get("eval_metrics", []),
+                }
+                eval_count += 1
+                if entry.get("eval_success", False):
+                    success_count += 1
+
+        if eval_count > 0:
+            self.eval_summary = {
+                "total": eval_count,
+                "success": success_count,
+                "run": True,
+            }
+            logger.info(f"Restored {eval_count} evaluation results from feedback data")
 
     def toggle_cluster_sampling(
         self, show_sample: bool
@@ -398,6 +434,304 @@ class DataAnnotationApp:
         """
         return html
 
+    def run_evaluation_on_feedback(
+        self, filename_filter: str = None
+    ) -> Tuple[str, str]:
+        """Run deepeval evaluation on feedback data with golden solutions.
+
+        Args:
+            filename_filter: Optional filename to evaluate only a single entry.
+                            If None, evaluates all entries with golden solutions.
+        """
+        if not self.feedback_data:
+            return "No feedback data available", self.get_eval_summary_html()
+
+        # Filter feedback entries that have golden solutions
+        if filename_filter:
+            # Single entry mode - find the specific entry
+            entries_with_golden = [
+                f
+                for f in self.feedback_data
+                if f.get("filename") == filename_filter
+                and f.get("golden_stepByStepSolution", "").strip()
+            ]
+            if not entries_with_golden:
+                return (
+                    f"No golden solution found for entry: {filename_filter}",
+                    self.get_eval_summary_html(),
+                )
+        else:
+            # All entries mode
+            entries_with_golden = [
+                f
+                for f in self.feedback_data
+                if f.get("golden_stepByStepSolution", "").strip()
+            ]
+            if not entries_with_golden:
+                return (
+                    "No entries with golden solutions found",
+                    self.get_eval_summary_html(),
+                )
+
+        # Convert to DataFrame with expected column names
+        df_data = []
+        for entry in entries_with_golden:
+            df_data.append(
+                {
+                    "file_name": entry.get(
+                        "filename", f"entry_{entry.get('index', 0)}"
+                    ),
+                    "logMessage": entry.get("logMessage", ""),
+                    "stepByStepSolution": entry.get("stepByStepSolution", ""),
+                    "golden_stepByStepSolution": entry.get(
+                        "golden_stepByStepSolution", ""
+                    ),
+                }
+            )
+
+        df = pd.DataFrame(df_data)
+        print(df.head())
+        try:
+            logger.info(f"Running evaluation on {len(df)} entries...")
+            results_df = run_evaluation(df)
+
+            # Process results and store in evaluation_results dict
+            # For single entry mode, don't clear existing results
+            if not filename_filter:
+                self.evaluation_results = {}
+
+            new_success_count = 0
+            for _, row in results_df.iterrows():
+                file_name = row.get("file_name") or row.get("name", "unknown")
+                success = row.get("success", False)
+                metrics_data = row.get("metrics_data", [])
+                # Extract metrics info
+                metrics_list = []
+                if metrics_data:
+                    for metric in metrics_data:
+                        # Handle both dict and object access
+                        if hasattr(metric, "name"):
+                            metrics_list.append(
+                                {
+                                    "name": metric.name,
+                                    "score": metric.score,
+                                    "reason": metric.reason,
+                                    "success": metric.success,
+                                }
+                            )
+                        elif isinstance(metric, dict):
+                            metrics_list.append(
+                                {
+                                    "name": metric.get("name", "Unknown"),
+                                    "score": metric.get("score"),
+                                    "reason": metric.get("reason"),
+                                    "success": metric.get("success", False),
+                                }
+                            )
+
+                self.evaluation_results[file_name] = {
+                    "success": success,
+                    "metrics": metrics_list,
+                }
+
+                if success:
+                    new_success_count += 1
+
+            # Update summary - recalculate from all stored results
+            total_count = len(self.evaluation_results)
+            total_success = sum(
+                1 for r in self.evaluation_results.values() if r.get("success", False)
+            )
+            self.eval_summary = {
+                "total": total_count,
+                "success": total_success,
+                "run": True,
+            }
+
+            # Safely update annotation.json with evaluation results
+            self._update_annotation_with_eval_results()
+
+            if filename_filter:
+                status = "✅ Passed" if new_success_count > 0 else "❌ Failed"
+                return f"Evaluation complete: {status}", self.get_eval_summary_html()
+            else:
+                return (
+                    f"Evaluation complete: {total_success}/{total_count} tests passed",
+                    self.get_eval_summary_html(),
+                )
+
+        except Exception as e:
+            logger.error(f"Evaluation failed: {e}")
+            return f"Evaluation failed: {str(e)}", self.get_eval_summary_html()
+
+    def _update_annotation_with_eval_results(self) -> None:
+        """Safely update annotation.json with evaluation results, one entry at a time."""
+        if not self.evaluation_results:
+            logger.warning("No evaluation results to save")
+            return
+
+        updated_count = 0
+
+        # Update each feedback entry with its evaluation results
+        for i, entry in enumerate(self.feedback_data):
+            filename = entry.get("filename", "")
+
+            # Find matching evaluation result
+            eval_result = self.evaluation_results.get(filename)
+
+            if eval_result:
+                # Format metrics for storage
+                metrics_formatted = []
+                for metric in eval_result.get("metrics", []):
+                    metrics_formatted.append(
+                        {
+                            "name": metric.get("name", "Unknown"),
+                            "score": metric.get("score"),
+                            "reason": metric.get("reason", ""),
+                            "success": metric.get("success", False),
+                        }
+                    )
+
+                # Update entry with evaluation results
+                self.feedback_data[i]["eval_success"] = eval_result.get(
+                    "success", False
+                )
+                self.feedback_data[i]["eval_metrics"] = metrics_formatted
+                self.feedback_data[i]["eval_timestamp"] = datetime.now().isoformat()
+
+                updated_count += 1
+                logger.debug(f"Updated entry {i} ({filename}) with eval results")
+
+        # Save updated feedback data to file
+        try:
+            # Write to a temp file first, then rename for safety
+            temp_file = self.feedback_file + ".tmp"
+            with open(temp_file, "w") as f:
+                json.dump(self.feedback_data, f, indent=2)
+
+            # Rename temp file to actual file (atomic on most systems)
+            os.replace(temp_file, self.feedback_file)
+
+            logger.info(
+                f"Updated annotation.json with {updated_count} evaluation results"
+            )
+        except Exception as e:
+            logger.error(f"Failed to save evaluation results to annotation.json: {e}")
+            # Try to clean up temp file if it exists
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass
+
+    def get_eval_summary_html(self) -> str:
+        """Generate HTML for the global evaluation summary."""
+        if not self.eval_summary.get("run", False):
+            return """<div style='padding: 12px; text-align: center; color: #94a3b8; 
+                       background-color: #1e293b; border: 1px solid #475569; border-radius: 8px;'>
+                       No evaluation run yet. Click "Run Evaluation" to start.</div>"""
+
+        total = self.eval_summary.get("total", 0)
+        success = self.eval_summary.get("success", 0)
+        percentage = (success / total * 100) if total > 0 else 0
+
+        # Color based on success rate
+        if percentage >= 80:
+            color = "#22c55e"  # green
+        elif percentage >= 50:
+            color = "#eab308"  # yellow
+        else:
+            color = "#ef4444"  # red
+
+        return f"""
+        <div style='padding: 16px; background-color: #1e293b; border: 1px solid #475569; 
+                    border-radius: 8px; display: flex; align-items: center; gap: 20px;'>
+            <div style='font-size: 1.2em; font-weight: 600; color: {color};'>
+                {success} / {total} tests passed ({percentage:.1f}%)
+            </div>
+            <div style='flex-grow: 1; background-color: #334155; border-radius: 4px; height: 8px;'>
+                <div style='width: {percentage}%; background-color: {color}; height: 100%; 
+                            border-radius: 4px; transition: width 0.3s;'></div>
+            </div>
+        </div>
+        """
+
+    def get_current_entry_eval_html(self) -> str:
+        """Get evaluation results HTML for the current entry."""
+        if not self.data:
+            return """<div style='padding: 12px; text-align: center; color: #94a3b8; 
+                       background-color: #1e293b; border: 1px solid #475569; border-radius: 8px;'>
+                       No data available</div>"""
+
+        current_entry = self.data[self.current_index]
+        filename = current_entry.get("filename", "")
+
+        # Try to find evaluation results - first from memory, then from saved feedback data
+        eval_result = self.evaluation_results.get(filename)
+
+        # If not in memory, check if it's saved in feedback_data
+        if not eval_result:
+            for feedback_entry in self.feedback_data:
+                if (
+                    feedback_entry.get("filename") == filename
+                    and "eval_metrics" in feedback_entry
+                ):
+                    eval_result = {
+                        "success": feedback_entry.get("eval_success", False),
+                        "metrics": feedback_entry.get("eval_metrics", []),
+                    }
+                    break
+
+        if not eval_result:
+            return """<div style='padding: 12px; text-align: center; color: #94a3b8; 
+                       background-color: #1e293b; border: 1px solid #475569; border-radius: 8px;'>
+                       No evaluation results for this entry (no golden solution or not evaluated)</div>"""
+
+        success = eval_result.get("success", False)
+        metrics = eval_result.get("metrics", [])
+
+        # Build metrics HTML
+        metrics_html = ""
+        for metric in metrics:
+            name = metric.get("name", "Unknown")
+            score = metric.get("score")
+            reason = metric.get("reason", "No reason provided")
+            metric_success = metric.get("success", False)
+
+            score_display = f"{score:.2f}" if score is not None else "N/A"
+            icon = "✅" if metric_success else "❌"
+            score_color = "#22c55e" if metric_success else "#ef4444"
+
+            metrics_html += f"""
+            <div style='margin-bottom: 12px; padding: 12px; background-color: #0f172a; 
+                        border-radius: 6px; border-left: 3px solid {score_color};'>
+                <div style='display: flex; align-items: center; gap: 8px; margin-bottom: 6px;'>
+                    <span>{icon}</span>
+                    <span style='font-weight: 600; color: #f1f5f9;'>{name}</span>
+                    <span style='color: {score_color}; font-weight: 600;'>[GEval] ({score_display})</span>
+                </div>
+                <div style='color: #94a3b8; font-size: 0.9em; padding-left: 24px;'>
+                    <strong>Reason:</strong> {reason[:500]}{"..." if len(reason) > 500 else ""}
+                </div>
+            </div>
+            """
+
+        overall_icon = "✅" if success else "❌"
+        overall_color = "#22c55e" if success else "#ef4444"
+
+        return f"""
+        <div style='padding: 16px; background-color: #1e293b; border: 1px solid #475569; border-radius: 8px;'>
+            <div style='display: flex; align-items: center; gap: 8px; margin-bottom: 12px; 
+                        padding-bottom: 12px; border-bottom: 1px solid #475569;'>
+                <span style='font-size: 1.2em;'>{overall_icon}</span>
+                <span style='font-weight: 600; color: {overall_color};'>
+                    Overall: {"PASSED" if success else "FAILED"}
+                </span>
+            </div>
+            {metrics_html if metrics_html else "<div style='color: #94a3b8;'>No metrics available</div>"}
+        </div>
+        """
+
 
 def create_app():
     """Create the Gradio interface."""
@@ -507,43 +841,83 @@ def create_app():
             "Annotate pipeline outputs with feedback on failure modes and solution quality."
         )
 
+        # Global Evaluation Summary Row
+        gr.Markdown("## 📊 Evaluation Results")
+        # with gr.Row():
+        #     with gr.Column():
+        #         run_eval_btn = gr.Button(
+        #             "🧪 Run Evaluation on labeled data",
+        #             variant="secondary",
+        #             scale=1,
+        #         )
+        #         eval_summary_display = gr.HTML(
+        #             value=app.get_eval_summary_html(),
+        #             label="Evaluation Summary",
+        #         )
+        #     eval_status = gr.Textbox(
+        #         label="Evaluation Status",
+        #         interactive=False,
+        #         value="Not run yet",
+        #         scale=2,
+        #     )
+
         # Compact navigation controls - all in one row
         with gr.Row():
-            cluster_sample_toggle = gr.Checkbox(
-                label="One sample per cluster",
-                value=False,
-                interactive=True,
-                scale=2,
-            )
-            prev_btn = gr.Button(
-                "← Prev",
-                elem_classes="nav-button",
-                scale=1,
-            )
-            nav_info = gr.Textbox(
-                label="Position",
+            with gr.Column():
+                with gr.Row():
+                    prev_btn = gr.Button(
+                        "← Prev",
+                        elem_classes="nav-button",
+                        scale=1,
+                    )
+                    nav_info = gr.Textbox(
+                        label="Position",
+                        interactive=False,
+                        value="Loading...",
+                        container=False,
+                        scale=1,
+                    )
+                    next_btn = gr.Button(
+                        "Next →",
+                        elem_classes="nav-button",
+                        scale=1,
+                    )
+
+                with gr.Row():
+                    cluster_sample_toggle = gr.Checkbox(
+                        label="One sample per cluster",
+                        value=False,
+                        interactive=True,
+                        scale=2,
+                    )
+                    jump_input = gr.Number(
+                        label="Jump to",
+                        minimum=1,
+                        value=1,
+                        step=1,
+                        precision=0,
+                        scale=1,
+                        container=False,
+                    )
+                    jump_btn = gr.Button(
+                        "Go",
+                        scale=1,
+                    )
+            with gr.Column():
+                run_eval_btn = gr.Button(
+                    "🧪 Run Evaluation on labeled data",
+                    variant="secondary",
+                    scale=1,
+                )
+                eval_summary_display = gr.HTML(
+                    value=app.get_eval_summary_html(),
+                    label="Evaluation Summary",
+                )
+            eval_status = gr.Textbox(
+                label="Evaluation Status",
                 interactive=False,
-                value="Loading...",
-                container=False,
-                scale=1,
-            )
-            next_btn = gr.Button(
-                "Next →",
-                elem_classes="nav-button",
-                scale=1,
-            )
-            jump_input = gr.Number(
-                label="Jump to",
-                minimum=1,
-                value=1,
-                step=1,
-                precision=0,
-                scale=1,
-                container=False,
-            )
-            jump_btn = gr.Button(
-                "Go",
-                scale=1,
+                value="Not run yet",
+                scale=2,
             )
 
         # Main content area - Reorganized into rows
@@ -590,6 +964,12 @@ def create_app():
                 )
                 show_solution_toggle = gr.Checkbox(
                     label="Show Step-by-Step Solution",
+                    value=True,
+                    interactive=True,
+                    scale=1,
+                )
+                show_evaluation_toggle = gr.Checkbox(
+                    label="Show Evaluation Results",
                     value=True,
                     interactive=True,
                     scale=1,
@@ -642,6 +1022,24 @@ def create_app():
                         value="",
                         visible=False,
                         elem_id="step_by_step_raw",
+                    )
+
+                # Per-log evaluation results section
+                eval_section = gr.Column(visible=True)
+                with eval_section:
+                    with gr.Row():
+                        gr.Markdown(
+                            "### 📊 Evaluation Results for This Entry", visible=True
+                        )
+                        run_single_eval_btn = gr.Button(
+                            "🧪 Evaluate This Entry",
+                            size="sm",
+                            scale=0,
+                            min_width=150,
+                        )
+                    eval_results_display = gr.HTML(
+                        value=app.get_current_entry_eval_html(),
+                        label="Evaluation Results",
                     )
 
         # Row 3: Feedback columns
@@ -756,9 +1154,13 @@ def create_app():
             )
             badge_text = "Yes" if db_need_more_context else "No"
             badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
-            # Return all values except db_need_more_context (index 9), plus the badge_html
+            # Get evaluation results for current entry
+            eval_results_html = app.get_current_entry_eval_html()
+            # Return all values except db_need_more_context (index 9), plus the badge_html and eval_results
             # result[:9] = first 9 items, result[10:13] = items 10-12 (is_context_correct, need_more_context, reason), result[13] = labels
-            return result[:9] + result[10:13] + (badge_html, result[13])
+            return (
+                result[:9] + result[10:13] + (badge_html, result[13], eval_results_html)
+            )
 
         # Event handlers
         def handle_save_feedback(
@@ -779,9 +1181,12 @@ def create_app():
             )
             return status
 
-        def handle_navigate_prev(
-            show_outputs, show_summary, show_context, show_solution
-        ):
+        def _build_nav_response(nav_result):
+            """Build UI response tuple from navigation result.
+
+            Note: We only update content values here - toggle handlers control visibility exclusively.
+            This avoids Gradio issues with combining value and visibility updates.
+            """
             (
                 log_content,
                 summary_content,
@@ -797,49 +1202,16 @@ def create_app():
                 user_need_more_context,
                 user_need_more_context_reason,
                 labels_json,
-            ) = app.navigate(-1)
-            # Create HTML badge for need_more_context display
+            ) = nav_result
+
             badge_class = (
                 "need-context-true" if db_need_more_context else "need-context-false"
             )
             badge_text = "Yes" if db_need_more_context else "No"
             badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
-            # Return content updates with visibility + preserved toggle states
-            return (
-                log_content,  # error_log
-                gr.update(visible=show_summary),  # summary_title
-                gr.update(
-                    value=summary_content, visible=show_summary
-                ),  # summary with visibility
-                gr.update(visible=show_context),  # context_title
-                gr.update(
-                    value=context_content, visible=show_context
-                ),  # context_for_solution with visibility
-                gr.update(visible=show_solution),  # solution_title
-                gr.update(
-                    value=step_content, visible=show_solution
-                ),  # step_by_step with visibility
-                feedback,  # feedback_text
-                golden,  # golden_solution_text
-                expected,  # expected_behavior_text
-                nav,  # nav_info
-                show_outputs,  # preserve show_outputs_toggle
-                show_summary,  # preserve show_summary_toggle
-                show_context,  # preserve show_context_toggle
-                show_solution,  # preserve show_solution_toggle
-                gr.update(visible=show_outputs),  # outputs_section visibility
-                raw_step,  # step_by_step_raw
-                badge_html,  # db_need_more_context_display
-                user_is_context_correct,  # is_context_correct_toggle
-                user_need_more_context,  # need_more_context_toggle
-                user_need_more_context_reason,  # need_more_context_reason
-                labels_json,  # labels_display
-            )
+            eval_results_html = app.get_current_entry_eval_html()
 
-        def handle_navigate_next(
-            show_outputs, show_summary, show_context, show_solution
-        ):
-            (
+            return (
                 log_content,
                 summary_content,
                 context_content,
@@ -849,122 +1221,27 @@ def create_app():
                 expected,
                 nav,
                 raw_step,
-                db_need_more_context,
+                badge_html,
                 user_is_context_correct,
                 user_need_more_context,
                 user_need_more_context_reason,
                 labels_json,
-            ) = app.navigate(1)
-            # Create HTML badge for need_more_context display
-            badge_class = (
-                "need-context-true" if db_need_more_context else "need-context-false"
-            )
-            badge_text = "Yes" if db_need_more_context else "No"
-            badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
-            # Return content updates with visibility + preserved toggle states
-            return (
-                log_content,  # error_log
-                gr.update(visible=show_summary),  # summary_title
-                gr.update(
-                    value=summary_content, visible=show_summary
-                ),  # summary with visibility
-                gr.update(visible=show_context),  # context_title
-                gr.update(
-                    value=context_content, visible=show_context
-                ),  # context_for_solution with visibility
-                gr.update(visible=show_solution),  # solution_title
-                gr.update(
-                    value=step_content, visible=show_solution
-                ),  # step_by_step with visibility
-                feedback,  # feedback_text
-                golden,  # golden_solution_text
-                expected,  # expected_behavior_text
-                nav,  # nav_info
-                show_outputs,  # preserve show_outputs_toggle
-                show_summary,  # preserve show_summary_toggle
-                show_context,  # preserve show_context_toggle
-                show_solution,  # preserve show_solution_toggle
-                gr.update(visible=show_outputs),  # outputs_section visibility
-                raw_step,  # step_by_step_raw
-                badge_html,  # db_need_more_context_display
-                user_is_context_correct,  # is_context_correct_toggle
-                user_need_more_context,  # need_more_context_toggle
-                user_need_more_context_reason,  # need_more_context_reason
-                labels_json,  # labels_display
+                eval_results_html,
             )
 
-        def handle_jump(index, show_outputs, show_summary, show_context, show_solution):
-            if index is not None:
-                (
-                    log_content,
-                    summary_content,
-                    context_content,
-                    step_content,
-                    feedback,
-                    golden,
-                    expected,
-                    nav,
-                    raw_step,
-                    db_need_more_context,
-                    user_is_context_correct,
-                    user_need_more_context,
-                    user_need_more_context_reason,
-                    labels_json,
-                ) = app.go_to_index(int(index) - 1)
-            else:
-                (
-                    log_content,
-                    summary_content,
-                    context_content,
-                    step_content,
-                    feedback,
-                    golden,
-                    expected,
-                    nav,
-                    raw_step,
-                    db_need_more_context,
-                    user_is_context_correct,
-                    user_need_more_context,
-                    user_need_more_context_reason,
-                    labels_json,
-                ) = app.get_current_entry()
-            # Create HTML badge for need_more_context display
-            badge_class = (
-                "need-context-true" if db_need_more_context else "need-context-false"
+        def handle_navigate_prev():
+            return _build_nav_response(app.navigate(-1))
+
+        def handle_navigate_next():
+            return _build_nav_response(app.navigate(1))
+
+        def handle_jump(index):
+            nav_result = (
+                app.go_to_index(int(index) - 1)
+                if index is not None
+                else app.get_current_entry()
             )
-            badge_text = "Yes" if db_need_more_context else "No"
-            badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
-            # Return content updates with visibility + preserved toggle states
-            return (
-                log_content,  # error_log
-                gr.update(visible=show_summary),  # summary_title
-                gr.update(
-                    value=summary_content, visible=show_summary
-                ),  # summary with visibility
-                gr.update(visible=show_context),  # context_title
-                gr.update(
-                    value=context_content, visible=show_context
-                ),  # context_for_solution with visibility
-                gr.update(visible=show_solution),  # solution_title
-                gr.update(
-                    value=step_content, visible=show_solution
-                ),  # step_by_step with visibility
-                feedback,  # feedback_text
-                golden,  # golden_solution_text
-                expected,  # expected_behavior_text
-                nav,  # nav_info
-                show_outputs,  # preserve show_outputs_toggle
-                show_summary,  # preserve show_summary_toggle
-                show_context,  # preserve show_context_toggle
-                show_solution,  # preserve show_solution_toggle
-                gr.update(visible=show_outputs),  # outputs_section visibility
-                raw_step,  # step_by_step_raw
-                badge_html,  # db_need_more_context_display
-                user_is_context_correct,  # is_context_correct_toggle
-                user_need_more_context,  # need_more_context_toggle
-                user_need_more_context_reason,  # need_more_context_reason
-                labels_json,  # labels_display
-            )
+            return _build_nav_response(nav_result)
 
         def handle_cluster_toggle(show_sample):
             result = app.toggle_cluster_sampling(show_sample)
@@ -976,9 +1253,13 @@ def create_app():
             )
             badge_text = "Yes" if db_need_more_context else "No"
             badge_html = f"<div class='need-context-badge {badge_class}'>🤖 AI Assessment - Need More Context: {badge_text}</div>"
-            # Return all values except db_need_more_context (index 9), plus the badge_html
+            # Get evaluation results for current entry
+            eval_results_html = app.get_current_entry_eval_html()
+            # Return all values except db_need_more_context (index 9), plus the badge_html and eval_results
             # result[:9] = first 9 items, result[10:13] = items 10-12 (is_context_correct, need_more_context, reason), result[13] = labels
-            return result[:9] + result[10:13] + (badge_html, result[13])
+            return (
+                result[:9] + result[10:13] + (badge_html, result[13], eval_results_html)
+            )
 
         def handle_outputs_toggle(show_outputs):
             return gr.update(visible=show_outputs)
@@ -1002,6 +1283,9 @@ def create_app():
                 gr.update(visible=show_solution),  # copy_solution_btn
             )
 
+        def handle_evaluation_toggle(show_evaluation):
+            return gr.update(visible=show_evaluation)  # eval_section
+
         def handle_annotation_view_toggle(view_selection):
             """Toggle between feedback, golden solution, expected behavior, and context views."""
             show_feedback = view_selection == "Feedback & Failure Mode"
@@ -1014,6 +1298,30 @@ def create_app():
                 gr.update(visible=show_expected),  # expected_behavior_text
                 gr.update(visible=show_need_context),  # need_more_context_column
             )
+
+        def handle_run_evaluation():
+            """Run evaluation on feedback data and update displays."""
+            status_msg, summary_html = app.run_evaluation_on_feedback()
+            eval_results_html = app.get_current_entry_eval_html()
+            return status_msg, summary_html, eval_results_html
+
+        def handle_run_single_evaluation():
+            """Run evaluation on just the current entry."""
+            if not app.data:
+                return (
+                    "No data available",
+                    app.get_eval_summary_html(),
+                    app.get_current_entry_eval_html(),
+                )
+
+            current_entry = app.data[app.current_index]
+            filename = current_entry.get("filename", "")
+
+            status_msg, summary_html = app.run_evaluation_on_feedback(
+                filename_filter=filename
+            )
+            eval_results_html = app.get_current_entry_eval_html()
+            return status_msg, summary_html, eval_results_html
 
         # Bind events
         interface.load(
@@ -1033,109 +1341,73 @@ def create_app():
                 need_more_context_reason,
                 db_need_more_context_display,
                 labels_display,
+                eval_results_display,
             ],
         )
 
         prev_btn.click(
             handle_navigate_prev,
-            inputs=[
-                show_outputs_toggle,
-                show_summary_toggle,
-                show_context_toggle,
-                show_solution_toggle,
-            ],
+            inputs=[],
             outputs=[
                 error_log,
-                summary_title,
                 summary,
-                context_title,
                 context_for_solution,
-                solution_title,
                 step_by_step,
                 feedback_text,
                 golden_solution_text,
                 expected_behavior_text,
                 nav_info,
-                show_outputs_toggle,
-                show_summary_toggle,
-                show_context_toggle,
-                show_solution_toggle,
-                outputs_section,
                 step_by_step_raw,
                 db_need_more_context_display,
                 is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 labels_display,
+                eval_results_display,
             ],
         )
 
         next_btn.click(
             handle_navigate_next,
-            inputs=[
-                show_outputs_toggle,
-                show_summary_toggle,
-                show_context_toggle,
-                show_solution_toggle,
-            ],
+            inputs=[],
             outputs=[
                 error_log,
-                summary_title,
                 summary,
-                context_title,
                 context_for_solution,
-                solution_title,
                 step_by_step,
                 feedback_text,
                 golden_solution_text,
                 expected_behavior_text,
                 nav_info,
-                show_outputs_toggle,
-                show_summary_toggle,
-                show_context_toggle,
-                show_solution_toggle,
-                outputs_section,
                 step_by_step_raw,
                 db_need_more_context_display,
                 is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 labels_display,
+                eval_results_display,
             ],
         )
 
         jump_btn.click(
             handle_jump,
-            inputs=[
-                jump_input,
-                show_outputs_toggle,
-                show_summary_toggle,
-                show_context_toggle,
-                show_solution_toggle,
-            ],
+            inputs=[jump_input],
             outputs=[
                 error_log,
-                summary_title,
                 summary,
-                context_title,
                 context_for_solution,
-                solution_title,
                 step_by_step,
                 feedback_text,
                 golden_solution_text,
                 expected_behavior_text,
                 nav_info,
-                show_outputs_toggle,
-                show_summary_toggle,
-                show_context_toggle,
-                show_solution_toggle,
-                outputs_section,
                 step_by_step_raw,
                 db_need_more_context_display,
                 is_context_correct_toggle,
                 need_more_context_toggle,
                 need_more_context_reason,
                 labels_display,
+                eval_results_display,
             ],
         )
 
@@ -1170,6 +1442,7 @@ def create_app():
                 need_more_context_reason,
                 db_need_more_context_display,
                 labels_display,
+                eval_results_display,
             ],
         )
 
@@ -1197,6 +1470,12 @@ def create_app():
             outputs=[solution_title, step_by_step, copy_solution_btn],
         )
 
+        show_evaluation_toggle.change(
+            handle_evaluation_toggle,
+            inputs=[show_evaluation_toggle],
+            outputs=[eval_section],
+        )
+
         copy_solution_btn.click(
             None,
             inputs=[step_by_step_raw],
@@ -1213,6 +1492,18 @@ def create_app():
                 expected_behavior_text,
                 need_more_context_column,
             ],
+        )
+
+        run_eval_btn.click(
+            handle_run_evaluation,
+            inputs=[],
+            outputs=[eval_status, eval_summary_display, eval_results_display],
+        )
+
+        run_single_eval_btn.click(
+            handle_run_single_evaluation,
+            inputs=[],
+            outputs=[eval_status, eval_summary_display, eval_results_display],
         )
 
     return interface
