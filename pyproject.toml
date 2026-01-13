@@ -68,7 +68,15 @@ extend-exclude = [
     "evals/",
 ]
 
-[tool.uv]
-# Try PyPI first, fall back to PyTorch CPU for torch packages only
-index-url = "https://pypi.org/simple"
-extra-index-url = ["https://download.pytorch.org/whl/cpu"]
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu" },
+]
+torchvision = [
+  { index = "pytorch-cpu" },
+]
