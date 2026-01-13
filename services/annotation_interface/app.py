@@ -842,7 +842,7 @@ def create_app():
         )
 
         # Global Evaluation Summary Row
-        gr.Markdown("## 📊 Evaluation Results")
+
         # with gr.Row():
         #     with gr.Column():
         #         run_eval_btn = gr.Button(
@@ -864,6 +864,7 @@ def create_app():
         # Compact navigation controls - all in one row
         with gr.Row():
             with gr.Column():
+                gr.Markdown("## 📊 Evaluation Results")
                 with gr.Row():
                     prev_btn = gr.Button(
                         "← Prev",
@@ -904,21 +905,28 @@ def create_app():
                         scale=1,
                     )
             with gr.Column():
-                run_eval_btn = gr.Button(
-                    "🧪 Run Evaluation on labeled data",
-                    variant="secondary",
-                    scale=1,
+                show_evals_toggle = gr.Checkbox(
+                    label="Show Evals",
+                    value=True,
+                    interactive=True,
                 )
-                eval_summary_display = gr.HTML(
-                    value=app.get_eval_summary_html(),
-                    label="Evaluation Summary",
-                )
-            eval_status = gr.Textbox(
-                label="Evaluation Status",
-                interactive=False,
-                value="Not run yet",
-                scale=2,
-            )
+                with gr.Row() as eval_interface:
+                    with gr.Column():
+                        run_eval_btn = gr.Button(
+                            "🧪 Run Evaluation on labeled data",
+                            variant="secondary",
+                            scale=1,
+                        )
+                        eval_summary_display = gr.HTML(
+                            value=app.get_eval_summary_html(),
+                            label="Evaluation Summary",
+                        )
+                    eval_status = gr.Textbox(
+                        label="Evaluation Status",
+                        interactive=False,
+                        value="Not run yet",
+                        scale=1,
+                    )
 
         # Main content area - Reorganized into rows
 
@@ -1025,8 +1033,7 @@ def create_app():
                     )
 
                 # Per-log evaluation results section
-                eval_section = gr.Column(visible=True)
-                with eval_section:
+                with gr.Column(visible=True) as eval_section:
                     with gr.Row():
                         gr.Markdown(
                             "### 📊 Evaluation Results for This Entry", visible=True
@@ -1286,6 +1293,14 @@ def create_app():
         def handle_evaluation_toggle(show_evaluation):
             return gr.update(visible=show_evaluation)  # eval_section
 
+        def handle_evals_toggle(show_evals):
+            """Toggle visibility of both eval_interface, eval_section, and show_evaluation_toggle."""
+            return (
+                gr.update(visible=show_evals),  # eval_interface
+                gr.update(visible=show_evals),  # eval_section
+                gr.update(visible=show_evals),  # show_evaluation_toggle
+            )
+
         def handle_annotation_view_toggle(view_selection):
             """Toggle between feedback, golden solution, expected behavior, and context views."""
             show_feedback = view_selection == "Feedback & Failure Mode"
@@ -1474,6 +1489,12 @@ def create_app():
             handle_evaluation_toggle,
             inputs=[show_evaluation_toggle],
             outputs=[eval_section],
+        )
+
+        show_evals_toggle.change(
+            handle_evals_toggle,
+            inputs=[show_evals_toggle],
+            outputs=[eval_interface, eval_section, show_evaluation_toggle],
         )
 
         copy_solution_btn.click(
