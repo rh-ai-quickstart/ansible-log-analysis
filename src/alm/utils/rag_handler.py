@@ -61,7 +61,7 @@ class RAGHandler:
             return False
 
         # Get RAG service URL
-        self._rag_service_url = os.getenv("RAG_SERVICE_URL", "http://alm-rag:8002")
+        self._rag_service_url = os.getenv("RAG_SERVICE_URL")
 
         # Create HTTP client and initialize (wrapped in try-except for error handling)
         try:
