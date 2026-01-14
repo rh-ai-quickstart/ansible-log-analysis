@@ -1,8 +1,8 @@
 # Ansible Log Analysis Quick Start
 
-Welcome to the Ansible log analysis Quick Start! a system that automatically detects errors, classifies them by authorization level, and generates intelligent step-by-step solutions. Our system eliminates manual log searching and reduces resolution time by routing issues to the appropriate experts.
+An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to the right experts.
 
-## Table of Contents
+## Table of contents
 
 1. [Overview](#overview)
 2. [Problem We Solve](#problem-we-solve)
@@ -27,7 +27,7 @@ Welcome to the Ansible log analysis Quick Start! a system that automatically det
     - [One-Time Setup](#one-time-setup)
     - [How the CI/CD Flow Works](#how-the-cicd-flow-works)
 
-## Problem We Solve
+## Detailed description
 
 **The Challenge:** Organizations running Ansible automation at scale face significant challenges when errors occur. Log analysis is manual, time-consuming, and requires specialized knowledge across multiple domains (AWS, Kubernetes, networking, etc.). When failures happen, teams spend valuable time searching through logs, identifying the right experts, and waiting for solutions.
 
@@ -37,7 +37,7 @@ Welcome to the Ansible log analysis Quick Start! a system that automatically det
 - Provides contextual, step-by-step solutions using AI agents
 - Learns from historical resolutions to improve future recommendations
 
-## Current Manual Process
+### Current Manual Process
 
 A human analyst is:
 
