@@ -4,28 +4,16 @@ An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-s
 
 ## Table of contents
 
-1. [Overview](#overview)
-2. [Problem We Solve](#problem-we-solve)
-3. [Current Manual Process](#current-manual-process)
-4. [Our Solution Stack](#our-solution-stack)
-5. [High-Level Solution](#high-level-solution)
-6. [Agentic Workflow](#agentic-workflow)
-   - [Step 1: Embedding and Clustering](#step-1-embedding-and-clustering)
-   - [Step 2: Summary and Expert Classification per Log Template](#step-2-summary-and-expert-classification-per-log-template)
-   - [Step 3: Creating a step-by-step solution](#step-3-creating-a-step-by-step-solution)
-   - [Step 4: Store the data](#step-4-store-the-data)
-   - [Training and Inference stages](#training-and-inference-stages)
-7. [User Interface](#user-interface)
-8. [Annotation Interface](#annotation-interface)
-9. [Requirements](#requirements)
-   - [Software Requirements](#software-requirements)
-   - [Minimum Hardware Requirements](#minimum-hardware-requirements)
-10. [Deployment](#deployment)
-    - [Quick Start - Local Development](#quick-start---local-development)
-    - [Deploy on the Cluster](#deploy-on-the-cluster)
-11. [Developer Workflow & CI/CD](#developer-workflow--cicd)
-    - [One-Time Setup](#one-time-setup)
-    - [How the CI/CD Flow Works](#how-the-cicd-flow-works)
+1. [Detailed description](#detailed-description)
+   - [Architecture diagrams](#architecture-diagrams)
+2. [Requirements](#requirements)
+   - [Minimum hardware requirements](#minimum-hardware-requirements)
+   - [Minimum software requirements](#minimum-software-requirements)
+   - [Required user permissions](#required-user-permissions)
+3. [Deploy](#deploy)
+   - [Delete](#delete)
+4. [References](#references)
+5. [Tags](#tags)
 
 ## Detailed description
 
@@ -60,8 +48,7 @@ A human analyst is:
 
 * **AI/ML Platform:**
   * OpenShift AI - model serving, data science pipelines, and notebook environment.
-  * LLM - powers summarization, classification, and solution generation.
-
+  * LLM - powers summarization, classification, and solution generation (served via RHOAI model serving or any OpenAI-compatible endpoint).
 
 * **Backend Services:**
   * FastAPI - REST API endpoints for alerts, queries, and pipeline orchestration.
@@ -96,7 +83,7 @@ A human analyst is:
 
 **Agentic Workflow:**
 
-<img src="docs/images/workflow.png" alt="Workflow" style="width:80%;">
+<img src="docs/images/workflow.png" alt="Workflow" style="width:80%">
 
 **Step 1: Embedding and Clustering**
 
@@ -191,9 +178,10 @@ Storage: 50Gi-200Gi
 ### Minimum software requirements
 
 **OpenShift Cluster Deployment**
-- **OpenShift AI** 2.25.0 or later
+- **Red Hat OpenShift AI** 2.25.0 or later (for model serving and data science workloads)
 - **Helm** 3.0.0 or later
 - **oc CLI** (for OpenShift)
+- **LLM Model Server** — Red Hat OpenShift AI model serving (vLLM) recommended for hosting your LLM with enterprise features or OpenAI cradetionals
 
 **Local Development Requirements**
 - Podman and Podman Compose or Docker and Docker Compose 
@@ -230,10 +218,11 @@ make cluster/install NAMESPACE=ansible-logs-monitor
 ```
 
 During installation, you'll be prompted to configure:
-- API token.
-- vLLM/OpenAI Endpoint.
-- Model.
-- Temperature (optional — defaults provided).
+- API token
+- LLM endpoint URL — Red Hat OpenShift AI model serving (vLLM) is the recommended option. Alternatively, any OpenAI-compatible endpoint can be used.
+- Model name (e.g., the model deployed on your RHOAI model server)
+- Temperature (optional — defaults are provided)
+
 
 #### Additional commands
 ```bash
@@ -266,11 +255,13 @@ cp .env.example .env
 ```
 Edit `.env` with your API keys and configuration:
 ```bash
-OPENAI_API_ENDPOINT: # VLLM (OpenAI) compitable endpoint (some endpoint need to add /v1 as suffix)
-OPENAI_API_TOKEN: # your token to the endpoint
-OPENAI_MODEL: # Model to use (e.g., llama-4-scout-17b-16e-w4a16	)
+OPENAI_API_ENDPOINT: # LLM endpoint URL - use your Red Hat OpenShift AI (RHOAI) model serving endpoint for enterprise deployments, or any OpenAI-compatible endpoint (some endpoints need /v1 suffix)
+OPENAI_API_TOKEN: # Your token to the endpoint (RHOAI service account token or API key)
+OPENAI_MODEL: # Model to use (e.g., the model deployed on your RHOAI vLLM server)
 LANGSMITH_API_KEY: # Optional, for LangSmith tracing
 ```
+
+> **💡 Tip:** For enterprise deployments, we recommend using [Red Hat OpenShift AI model serving](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.0/html/deploying_models/deploying_models?utm_source=chatgpt.com#deploying-models-on-the-model-serving-platform_rhoai-user) to host your LLM. RHOAI provides vLLM-based model serving with built-in GPU support, autoscaling, and enterprise security features.
 
 **3. Start All Services**
 In short:
@@ -304,7 +295,7 @@ make local/help
 
 ### Delete
 
-**Delete OpenShift**
+**Delete from OpenShift**
 
 ```bash
 # Remove from current project
@@ -315,7 +306,7 @@ make cluster/uninstall NAMESPACE=ansible-logs-monitor
 ```
 
 
-**Delete Local**
+**Stop Local Deployment**
 ```bash
 # uninstall all services when done
 make local/uninstall
@@ -323,12 +314,15 @@ make local/uninstall
 
 <!-- ## References  -->
 
+## References 
+- [How to deploy language models with Red Hat OpenShift AI](https://developers.redhat.com/articles/2025/09/10/how-deploy-language-models-red-hat-openshift-ai#)
+
 
 ## Tags
 
 * Title: Ansible Agent AI Log Analysis
 * Description: An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to experts.
 * Industry: Technology
-* Product: OpenShift AI, Ansible Automation Platform
+* Product: Red Hat OpenShift AI, Ansible Automation Platform
 * Use case: Log Analysis, Analyst Assistant, Intelligent Troubleshooting
 * Contributor org: Red Hat
