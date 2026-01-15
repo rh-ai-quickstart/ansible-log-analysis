@@ -38,8 +38,8 @@ class DataAnnotationApp:
         self.feedback_data = []
         self.show_cluster_sample = False  # Toggle state for cluster sampling
 
-        # Evaluation results storage: dict keyed by filename
-        self.evaluation_results: Dict[str, Dict[str, Any]] = {}
+        # Evaluation results storage: dict keyed by entry index
+        self.evaluation_results: Dict[int, Dict[str, Any]] = {}
         self.eval_summary: Dict[str, Any] = {"total": 0, "success": 0, "run": False}
 
         # Get table name from environment variable
@@ -154,14 +154,16 @@ class DataAnnotationApp:
 
         for entry in self.feedback_data:
             if "eval_metrics" in entry:
-                filename = entry.get("filename", "")
-                self.evaluation_results[filename] = {
-                    "success": entry.get("eval_success", False),
-                    "metrics": entry.get("eval_metrics", []),
-                }
-                eval_count += 1
-                if entry.get("eval_success", False):
-                    success_count += 1
+                # Use index as the key (consistent with how get_current_entry looks up feedback)
+                entry_index = entry.get("index")
+                if entry_index is not None:
+                    self.evaluation_results[entry_index] = {
+                        "success": entry.get("eval_success", False),
+                        "metrics": entry.get("eval_metrics", []),
+                    }
+                    eval_count += 1
+                    if entry.get("eval_success", False):
+                        success_count += 1
 
         if eval_count > 0:
             self.eval_summary = {
@@ -438,30 +440,31 @@ class DataAnnotationApp:
         """
         return html
 
-    def run_evaluation_on_feedback(
-        self, filename_filter: str = None
-    ) -> Tuple[str, str]:
+    def run_evaluation_on_feedback(self, index_filter: int = None) -> Tuple[str, str]:
         """Run deepeval evaluation on feedback data with golden solutions.
 
         Args:
-            filename_filter: Optional filename to evaluate only a single entry.
-                            If None, evaluates all entries with golden solutions.
+            index_filter: Optional entry index to evaluate only a single entry.
+                         If None, evaluates all entries with golden solutions.
         """
         if not self.feedback_data:
-            return "No feedback data available", self.get_eval_summary_html()
+            return (
+                "Please annotate some data in the annotation section below.",
+                self.get_eval_summary_html(),
+            )
 
         # Filter feedback entries that have golden solutions
-        if filename_filter:
-            # Single entry mode - find the specific entry
+        if index_filter is not None:
+            # Single entry mode - find the specific entry by index
             entries_with_golden = [
                 f
                 for f in self.feedback_data
-                if f.get("filename") == filename_filter
+                if f.get("index") == index_filter
                 and f.get("golden_stepByStepSolution", "").strip()
             ]
             if not entries_with_golden:
                 return (
-                    f"No golden solution found for entry: {filename_filter}",
+                    f"No golden solution found for entry at index: {index_filter}",
                     self.get_eval_summary_html(),
                 )
         else:
@@ -473,7 +476,7 @@ class DataAnnotationApp:
             ]
             if not entries_with_golden:
                 return (
-                    "No entries with golden solutions found",
+                    "There are no entries with golden solutions to evaluate",
                     self.get_eval_summary_html(),
                 )
 
@@ -482,6 +485,7 @@ class DataAnnotationApp:
         for entry in entries_with_golden:
             df_data.append(
                 {
+                    "index": entry.get("index"),
                     "file_name": entry.get(
                         "filename", f"entry_{entry.get('index', 0)}"
                     ),
@@ -500,12 +504,12 @@ class DataAnnotationApp:
 
             # Process results and store in evaluation_results dict
             # For single entry mode, don't clear existing results
-            if not filename_filter:
+            if index_filter is None:
                 self.evaluation_results = {}
 
             new_success_count = 0
             for _, row in results_df.iterrows():
-                file_name = row.get("file_name") or row.get("name", "unknown")
+                entry_index = row.get("index")
                 success = row.get("success", False)
                 metrics_data = row.get("metrics_data", [])
                 # Extract metrics info
@@ -532,10 +536,12 @@ class DataAnnotationApp:
                                 }
                             )
 
-                self.evaluation_results[file_name] = {
-                    "success": success,
-                    "metrics": metrics_list,
-                }
+                # Store by index (consistent with how feedback entries are identified)
+                if entry_index is not None:
+                    self.evaluation_results[entry_index] = {
+                        "success": success,
+                        "metrics": metrics_list,
+                    }
 
                 if success:
                     new_success_count += 1
@@ -554,7 +560,7 @@ class DataAnnotationApp:
             # Safely update annotation.json with evaluation results
             self._update_annotation_with_eval_results()
 
-            if filename_filter:
+            if index_filter is not None:
                 status = "✅ Passed" if new_success_count > 0 else "❌ Failed"
                 return f"Evaluation complete: {status}", self.get_eval_summary_html()
             else:
@@ -577,10 +583,10 @@ class DataAnnotationApp:
 
         # Update each feedback entry with its evaluation results
         for i, entry in enumerate(self.feedback_data):
-            filename = entry.get("filename", "")
+            entry_index = entry.get("index")
 
-            # Find matching evaluation result
-            eval_result = self.evaluation_results.get(filename)
+            # Find matching evaluation result by index
+            eval_result = self.evaluation_results.get(entry_index)
 
             if eval_result:
                 # Format metrics for storage
@@ -603,7 +609,9 @@ class DataAnnotationApp:
                 self.feedback_data[i]["eval_timestamp"] = datetime.now().isoformat()
 
                 updated_count += 1
-                logger.debug(f"Updated entry {i} ({filename}) with eval results")
+                logger.debug(
+                    f"Updated entry {i} (index={entry_index}) with eval results"
+                )
 
         # Save updated feedback data to file
         try:
@@ -632,7 +640,7 @@ class DataAnnotationApp:
         if not self.eval_summary.get("run", False):
             return """<div style='padding: 12px; text-align: center; color: #94a3b8; 
                        background-color: #1e293b; border: 1px solid #475569; border-radius: 8px;'>
-                       No evaluation run yet. Click "Run Evaluation" to start.</div>"""
+                       There are no evaluation results yet, annotate some data first.</div>"""
 
         total = self.eval_summary.get("total", 0)
         success = self.eval_summary.get("success", 0)
@@ -666,17 +674,14 @@ class DataAnnotationApp:
                        background-color: #1e293b; border: 1px solid #475569; border-radius: 8px;'>
                        No data available</div>"""
 
-        current_entry = self.data[self.current_index]
-        filename = current_entry.get("filename", "")
+        # Use index to look up evaluation results (consistent with how get_current_entry works)
+        eval_result = self.evaluation_results.get(self.current_index)
 
-        # Try to find evaluation results - first from memory, then from saved feedback data
-        eval_result = self.evaluation_results.get(filename)
-
-        # If not in memory, check if it's saved in feedback_data
+        # If not in memory, check if it's saved in feedback_data by index
         if not eval_result:
             for feedback_entry in self.feedback_data:
                 if (
-                    feedback_entry.get("filename") == filename
+                    feedback_entry.get("index") == self.current_index
                     and "eval_metrics" in feedback_entry
                 ):
                     eval_result = {
@@ -1155,6 +1160,9 @@ def create_app():
 
         # Initialize the interface
         def init_interface():
+            # Reload data and feedback on every page load/refresh
+            app.load_data()
+            app.load_feedback()
             result = app.get_current_entry()
             # Extract the db_need_more_context value (index 9) from database
             db_need_more_context = result[9]
@@ -1332,11 +1340,9 @@ def create_app():
                     app.get_current_entry_eval_html(),
                 )
 
-            current_entry = app.data[app.current_index]
-            filename = current_entry.get("filename", "")
-
+            # Use current_index to filter evaluation to this specific entry
             status_msg, summary_html = app.run_evaluation_on_feedback(
-                filename_filter=filename
+                index_filter=app.current_index
             )
             eval_results_html = app.get_current_entry_eval_html()
             return status_msg, summary_html, eval_results_html
@@ -1384,7 +1390,7 @@ def create_app():
                 eval_results_display,
             ],
         )
-
+        # Fix annotion evaluation
         next_btn.click(
             handle_navigate_next,
             inputs=[],
