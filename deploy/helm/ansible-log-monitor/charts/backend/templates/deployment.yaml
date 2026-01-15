@@ -48,6 +48,18 @@ spec:
                   name: pgvector
                   key: uri
         {{- end }}
+        - name: wait-for-init-job
+          image: quay.io/openshift/origin-cli:4.15
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for init job to complete..."
+              until oc wait --for=condition=complete job/{{ include "backend.fullname" . }}-init -n {{ .Release.Namespace }} --timeout=10s; do
+                echo "Still waiting..."
+                sleep 3
+              done
+              echo "Init job completed successfully!"
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.securityContext }}
