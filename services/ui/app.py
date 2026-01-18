@@ -903,25 +903,46 @@ def create_interface():
 
     # Custom CSS for modern, beautiful dark theme
     custom_css = """
+    /* CSS Custom Property for consistent max-width */
+    :root {
+        --app-max-width: 1080px;
+    }
+    
     /* Main container styling */
     .gradio-container {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         color: #e2e8f0 !important;
         overflow: visible !important;
+        max-width: var(--app-max-width) !important;
+        margin: 0 auto !important;
+        padding: 0 1rem !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
     
     /* Ensure parent elements allow dropdown overflow */
     .gradio-container > * {
         overflow: visible !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     
     .gradio-container .block {
         overflow: visible !important;
+        max-width: 100% !important;
     }
     
     .gradio-container .wrap {
         overflow: visible !important;
+        max-width: 100% !important;
+    }
+    
+    /* Ensure all Gradio rows and columns respect the container width */
+    .gradio-container .gradio-row,
+    .gradio-container .gradio-column {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     
     /* Header styling */
@@ -954,6 +975,14 @@ def create_interface():
         border-radius: 0.75rem;
         padding: 1.25rem;
         margin: 1rem 0;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    .card {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
     }
     
     /* Input styling */
@@ -1049,6 +1078,9 @@ def create_interface():
     .logs-container {
         padding: 0.5rem;
         position: relative;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
     }
     
     .log-item {
@@ -1268,6 +1300,8 @@ def create_interface():
         border-radius: 0.75rem;
         border: 1px solid #475569;
         backdrop-filter: blur(10px);
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     
     /* Section headers */
@@ -1306,6 +1340,17 @@ def create_interface():
     }
     """
 
+    # JavaScript to auto-redirect to dark theme if not already set
+    head_js = """
+    <script>
+        const url = new URL(window.location);
+        if (url.searchParams.get('__theme') !== 'dark') {
+            url.searchParams.set('__theme', 'dark');
+            window.location.href = url.href;
+        }
+    </script>
+    """
+
     with gr.Blocks(
         title="Ansible Logs Viewer",
         theme=gr.themes.Soft(
@@ -1324,6 +1369,7 @@ def create_interface():
             button_primary_text_color="white",
         ),
         css=custom_css,
+        head=head_js,
     ) as demo:
         # Beautiful header
         with gr.Column(elem_classes=["main-header"]):
@@ -1339,32 +1385,32 @@ def create_interface():
             gr.HTML('<h3 class="section-header">🎯 Filters & Controls</h3>')
 
             with gr.Row():
-                with gr.Column(scale=3):
-                    expert_dropdown = gr.Dropdown(
-                        choices=["Select an expert"] + EXPERT_CLASSES,
-                        value="Select an expert",
-                        label="📂 Expert Class",
-                        info="Choose an expert class to filter and analyze alerts",
-                        elem_classes=["expert-selector"],
-                    )
+                expert_dropdown = gr.Dropdown(
+                    choices=["Select an expert"] + EXPERT_CLASSES,
+                    value="Select an expert",
+                    label="📂 Expert Class",
+                    info="Choose an expert class to filter and analyze alerts",
+                    elem_classes=["expert-selector"],
+                    scale=3,
+                )
 
-                with gr.Column(scale=1):
-                    label_key_dropdown = gr.Dropdown(
-                        choices=["No label key"],
-                        value="No label key",
-                        label="🏷️ Label Key",
-                        info="Filter by specific label keys",
-                        elem_classes=["filter-dropdown"],
-                    )
+                label_key_dropdown = gr.Dropdown(
+                    choices=["No label key"],
+                    value="No label key",
+                    label="🏷️ Label Key",
+                    info="Filter by specific label keys",
+                    elem_classes=["filter-dropdown"],
+                    scale=1,
+                )
 
-                with gr.Column(scale=1):
-                    label_value_dropdown = gr.Dropdown(
-                        choices=["No label value"],
-                        value="No label value",
-                        label="🎯 Label Value",
-                        info="Filter by label values",
-                        elem_classes=["filter-dropdown"],
-                    )
+                label_value_dropdown = gr.Dropdown(
+                    choices=["No label value"],
+                    value="No label value",
+                    label="🎯 Label Value",
+                    info="Filter by label values",
+                    elem_classes=["filter-dropdown"],
+                    scale=1,
+                )
 
         # Main content area
         with gr.Column():

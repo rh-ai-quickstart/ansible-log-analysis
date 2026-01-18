@@ -850,9 +850,19 @@ def create_app():
         color: #94a3b8;
     }
     """
-
+    # JavaScript to auto-redirect to dark theme if not already set (injected in <head>)
+    head_js = """
+    <script>
+        const url = new URL(window.location);
+        if (url.searchParams.get('__theme') !== 'dark') {
+            url.searchParams.set('__theme', 'dark');
+            window.location.href = url.href;
+        }
+    </script>
+    """
     with gr.Blocks(
         css=css,
+        head=head_js,
         theme=gr.themes.Soft(
             primary_hue="indigo",
             secondary_hue="blue",
