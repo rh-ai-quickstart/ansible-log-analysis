@@ -180,44 +180,7 @@ Storage: 50Gi-200Gi
 
 ## Deploy
 
-The Ansible Log Monitor can be deployed in **local** or **cluster** deployments depending on your needs. Choose the deployment method that best fits your requirements:
-
-### Quick Start - OpenShift Deployment
-
-For production deployment on OpenShift clusters:
-
-```bash
-# Install in your current namespace
-make cluster/install
-
-# Or specify a different namespace
-make cluster/install NAMESPACE=ansible-logs-monitor
-```
-
-During installation, you'll be prompted to configure:
-- API token
-- LLM endpoint URL — Red Hat OpenShift AI model serving (vLLM) is the recommended option. Alternatively, any OpenAI-compatible endpoint can be used.
-- Model name (e.g., the model deployed on your RHOAI model server)
-- Temperature (optional — defaults are provided)
-
-
-#### Additional commands
-
-```bash
-# upgrade
-make cluster/upgrade
-
-# restart
-make cluster/restart
-```
-
-### Quick Start - Local Development
-
-For development and testing, you can run all services locally using the provided Makefile:
-
-#### Deploy Locally
-
-Follow these steps to set up and run the Ansible Log Monitor on your local development environment:
+The Ansible Log Monitor can be deployed in **local** or **cluster** deployments depending on your needs. Choose the deployment method that best fits your requirements. For both deployment methods you first need to perform the following steps:
 
 ##### 1. Clone and Setup Repository
 
@@ -243,8 +206,34 @@ LANGSMITH_API_KEY: # Optional, for LangSmith tracing
 
 > **💡 Tip:** For enterprise deployments, we recommend using [Red Hat OpenShift AI model serving](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.0/html/deploying_models/deploying_models?utm_source=chatgpt.com#deploying-models-on-the-model-serving-platform_rhoai-user) to host your LLM. RHOAI provides vLLM-based model serving with built-in GPU support, autoscaling, and enterprise security features.
 
-##### 3. Start All Services
+### Quick Start - OpenShift Deployment
 
+For production deployment on OpenShift clusters:
+
+```bash
+# Install in your current namespace
+make cluster/install
+
+# Or specify a different namespace
+make cluster/install NAMESPACE=ansible-logs-monitor
+```
+#### Additional commands
+
+```bash
+# upgrade
+make cluster/upgrade
+
+# restart
+make cluster/restart
+```
+
+### Quick Start - Local Development
+
+For development and testing, you can run all services locally using the provided Makefile:
+
+#### Deploy Locally
+
+To run the Ansible Log Monitor on your local development environment, you will need to start all serivces.
 In short:
 ```bash
 make local/install
