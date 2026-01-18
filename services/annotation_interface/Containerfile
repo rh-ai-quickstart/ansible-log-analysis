@@ -19,6 +19,7 @@ ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
 COPY app.py test_end_to_end.py .
+COPY data/feedback/annotation.json data/feedback/annotation.json
 
 # Create .deepeval directory and set permissions for non-root user
 # This fixes PermissionError when deepeval tries to create its cache directory

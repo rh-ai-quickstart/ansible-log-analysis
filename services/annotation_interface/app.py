@@ -168,23 +168,26 @@ class DataAnnotationApp:
         """Restore evaluation results from saved feedback data."""
         eval_count = 0
         success_count = 0
+        need_to_run_evaluation = False
 
         for entry in self.feedback_data:
             if "eval_metrics" in entry:
                 # Determine the index by filename and timestamp from labels
                 key = f"{entry.get('filename')}-{entry.get('logMessage')}"
-                entry_index, step_by_step_solution = self.entry_index_map.get(key)
+                entry_index, step_by_step_solution = self.entry_index_map.get(
+                    key, (None, None)
+                )
+                entry["index"] = entry_index
+                logger.debug(f"Entry index: {entry_index}")
                 if entry_index is not None:
                     old_step_by_step_solution = entry.get("stepByStepSolution")
                     old_entry_index = entry.get("index")
-
-                    entry["index"] = entry_index
                     entry["stepByStepSolution"] = step_by_step_solution
                     if (
                         old_step_by_step_solution != step_by_step_solution
                         or old_entry_index != entry_index
                     ):
-                        self.run_evaluation_on_feedback(entry_index)
+                        need_to_run_evaluation = True
                     self.evaluation_results[entry_index] = {
                         "success": entry.get("eval_success", False),
                         "metrics": entry.get("eval_metrics", []),
@@ -193,6 +196,11 @@ class DataAnnotationApp:
                     if entry.get("eval_success", False):
                         success_count += 1
 
+        if need_to_run_evaluation:
+            self.run_evaluation_on_feedback()
+        logger.info(f"Need to run evaluation: {need_to_run_evaluation}")
+        logger.info(f"Eval count: {eval_count}")
+        logger.info(f"Success count: {success_count}")
         if eval_count > 0:
             self.eval_summary = {
                 "total": eval_count,
@@ -501,6 +509,7 @@ class DataAnnotationApp:
                 f
                 for f in self.feedback_data
                 if f.get("golden_stepByStepSolution", "").strip()
+                and f.get("index") is not None
             ]
             if not entries_with_golden:
                 return (
@@ -677,11 +686,11 @@ class DataAnnotationApp:
         return f"""
         <div style='padding: 16px; background-color: #1e293b; border: 1px solid #475569; 
                     border-radius: 8px; display: flex; align-items: center; gap: 20px;'>
-            <div style='font-size: 1.2em; font-weight: 600; color: "#22c55e";'>
+            <div style='font-size: 1.2em; font-weight: 600; color: #22c55e;'>
                 {success} / {total} tests passed ({percentage:.1f}%)
             </div>
             <div style='flex-grow: 1; background-color: #334155; border-radius: 4px; height: 8px;'>
-                <div style='width: {percentage}%; background-color: "#22c55e"; height: 100%; 
+                <div style='width: {percentage}%; background-color: #22c55e; height: 100%; 
                             border-radius: 4px; transition: width 0.3s;'></div>
             </div>
         </div>
@@ -769,11 +778,39 @@ def create_app():
 
     # Custom CSS for dark theme
     css = """
-    /* Standard container width */
+    /* Standard container width - consistent across all elements */
     .gradio-container {
         max-width: 1200px !important;
         margin-left: auto !important;
         margin-right: auto !important;
+        background-color: #0f172a !important;
+        box-sizing: border-box !important;
+    }
+    /* Ensure all child elements respect container width */
+    .gradio-container > * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .gradio-container .wrap,
+    .gradio-container .contain {
+        max-width: 100% !important;
+    }
+    /* Fix row and column widths */
+    .gradio-row {
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .gradio-column {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    /* Ensure form elements don't overflow */
+    .gradio-container textarea,
+    .gradio-container input,
+    .gradio-container .prose {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .summary-box {
         padding: 16px;
@@ -793,12 +830,16 @@ def create_app():
         border-radius: 8px; 
         border: 1px solid #334155 !important;
         max-height: 420px;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
     .feedback-box {
         min-height: 200px;
         background-color: #1e293b !important;
         color: #e2e8f0 !important;
         border: 1px solid #475569 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
     .nav-button {
         min-width: 60px;
@@ -817,6 +858,8 @@ def create_app():
     table {
         background-color: #1e293b !important;
         color: #e2e8f0 !important;
+        width: 100% !important;
+        table-layout: fixed !important;
     }
     th {
         background-color: #334155 !important;
@@ -824,13 +867,11 @@ def create_app():
     }
     td {
         border-color: #475569 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
     tr:hover {
         background-color: #334155 !important;
-    }
-    /* Override any light theme remnants */
-    .gradio-container {
-        background-color: #0f172a !important;
     }
     /* Need More Context badge */
     .need-context-badge {
@@ -848,6 +889,19 @@ def create_app():
     .need-context-false {
         background-color: #475569;
         color: #94a3b8;
+    }
+    /* Ensure code blocks don't overflow */
+    .gradio-container pre,
+    .gradio-container code {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        box-sizing: border-box !important;
+    }
+    /* Fix Group component width */
+    .gradio-group {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     """
     # JavaScript to auto-redirect to dark theme if not already set (injected in <head>)
@@ -930,7 +984,7 @@ def create_app():
 
                 with gr.Row():
                     cluster_sample_toggle = gr.Checkbox(
-                        label="One sample per cluster",
+                        label="Show only one log per log template",
                         value=False,
                         interactive=True,
                         scale=2,
