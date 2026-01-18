@@ -308,18 +308,25 @@ After selecting the authorization class "expert":
 
 <img src="docs/images/step-by-step.png" alt="Step-by-step Solution" style="width:80%;">
 
-#### Annotation Interface
+#### Annotation and Evaluation Interface
 
-For improving our agentic workflow, context PDFs, and other context, we need to understand the errors. To do so, we have a data annotation interface for annotating Ansible error log pipeline outputs.  
-We see the agentic workflow:
+To improve our agentic workflow, context PDFs, and other supporting materials, we need to understand the errors. For this purpose, we provide a data annotation interface for labeling Ansible error log pipeline outputs.
 
-* **Input** of the left (error log)  
-* **Outputs** in the center (summary, and step-by-step solution)  
-* **Annotation window** on the right.
+Additionally, once annotation is complete, you can evaluate the annotated results against the agent-generated output to determine which cases require improvements to your prompts, data, or code.
 
-See the interface below:
+Given many logs, you can select from all the log templates that have been detected in your Ansible log errors, as shown in the figure below:
 
-<img src="docs/images/anotation_interface.png" alt="Annotation Interface" style="width:80%;">
+<img src="docs/images/annotation_part_1.png" alt="Annotation Interface" style="width:80%;">
+
+To improve your agent's overall performance, annotate the data using domain experts to identify the errors and write the expected step-by-step solution.
+
+<img src="docs/images/annotation_part_2.png" alt="Annotation Interface" style="width:80%;">
+
+After annotating some data (in this example, we annotated 43 logs), you can run the evaluation and use LLM-as-a-judge to compare the agent output against the golden output labeled by the expert.
+
+<img src="docs/images/annotation_part_3.png" alt="Annotation Interface" style="width:80%;">
+
+
 
 
 ### Delete
