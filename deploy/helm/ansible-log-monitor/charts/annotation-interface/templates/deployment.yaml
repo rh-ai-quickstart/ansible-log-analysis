@@ -47,6 +47,24 @@ spec:
                 echo "{{ .Values.global.servicesNames.backend }}-init job failed or timed out!"
                 exit 1
               fi
+        - name: init-annotation-data
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              if [ -f /mnt/data/feedback/annotation.json ]; then
+                echo "annotation.json already exists on persistent volume, skipping copy."
+              else
+                echo "annotation.json not found on persistent volume, copying from container..."
+                mkdir -p /mnt/data/feedback
+                cp /app/data/feedback/annotation.json /mnt/data/feedback/annotation.json
+                echo "annotation.json copied successfully."
+              fi
+          volumeMounts:
+            - name: data-volume
+              mountPath: /mnt/data
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.securityContext }}
