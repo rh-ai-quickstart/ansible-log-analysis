@@ -91,11 +91,11 @@ A human analyst is:
 3. The **agentic workflow** processes the log and stores the processed data into a PostgreSQL database.  
 4. The log analyst using the **UI** interacts with the logs and gets suggestions on how to solve the error, depending on their authorization. 
 
-<img src="docs/images/high_level_architecture.png" alt="high_level_architecture" style="width:80%;">
+<img src="docs/images/high_level_architecture.png" alt="high_level_architecture" style="width:70%;">
 
 #### Agentic Workflow
 
-<img src="docs/images/workflow.png" alt="Workflow" style="width:80%">
+<img src="docs/images/workflow.png" alt="Workflow" style="width:70%">
 
 #### Step 1: Embedding and Clustering
 
@@ -277,15 +277,17 @@ make local/help
 
 ### Usage
 
-After the installation is complited look at the routes from openshift or using the command line
+##### Openshift Cluster Deployment
+After the installation is complete, check the routes in OpenShift or by using the command line:
 ```bash
-oc ...
+oc get routes -n <namespace>
 ```
 
-in lcoal deployment you will neet to go to the urls
-For the user insterface:
+##### Local Deployment
 
-For the annotation interface and evaluation system
+For the user interface: `http://localhost:7861`
+Annotation interface and evaluation system: `http://localhost:7860`
+Phoenix: `http://localhost:6006`
 
 #### User Interface
 
@@ -304,9 +306,9 @@ For the annotation interface and evaluation system
 
 After selecting the authorization class "expert":
 
-<img src="docs/images/ui_view.png" alt="UI View" style="width:80%;">
+<img src="docs/images/ui_view.png" alt="UI View" style="width:60%;">
 
-<img src="docs/images/step-by-step.png" alt="Step-by-step Solution" style="width:80%;">
+<img src="docs/images/step-by-step.png" alt="Step-by-step Solution" style="width:60%;">
 
 #### Annotation and Evaluation Interface
 
@@ -316,15 +318,15 @@ Additionally, once annotation is complete, you can evaluate the annotated result
 
 Given many logs, you can select from all the log templates that have been detected in your Ansible log errors, as shown in the figure below:
 
-<img src="docs/images/annotation_part_1.png" alt="Annotation Interface" style="width:80%;">
+<img src="docs/images/annotation_part_1.png" alt="Annotation Interface" style="width:60%;">
 
 To improve your agent's overall performance, annotate the data using domain experts to identify the errors and write the expected step-by-step solution.
 
-<img src="docs/images/annotation_part_2.png" alt="Annotation Interface" style="width:80%;">
+<img src="docs/images/annotation_part_2.png" alt="Annotation Interface" style="width:60%;">
 
 After annotating some data (in this example, we annotated 43 logs), you can run the evaluation and use LLM-as-a-judge to compare the agent output against the golden output labeled by the expert.
 
-<img src="docs/images/annotation_part_3.png" alt="Annotation Interface" style="width:80%;">
+<img src="docs/images/annotation_part_3.png" alt="Annotation Interface" style="width:60%;">
 
 
 
