@@ -537,10 +537,11 @@ alloy:
         // Requires /var/log/ansible_logs to be mounted (see controller.volumes.extra and alloy.mounts.extra above)
         
         // Discover log files using glob pattern
+        // Expected path: /var/log/ansible_logs/<cluster_name>/<job_name>.txt
         local.file_match "ansible_logs" {
           path_targets = [{
             __address__ = "localhost",
-            __path__    = "/var/log/ansible_logs/**/*.txt",
+            __path__    = "/var/log/ansible_logs/*/*.txt",
           }]
         }
 
@@ -562,32 +563,63 @@ alloy:
             max_lines     = 2000
           }
 
-          // Stage 2: Extract task name marker
+          // Stage 2: Extract cluster_name from filename path
+          stage.regex {
+            source     = "filename"
+            expression = "/var/log/ansible_logs/(?P<cluster_name>[^/]+)/"
+          }
+
+          // Stage 3: Promote cluster_name to label
+          stage.labels {
+            values = {
+              cluster_name = "",
+            }
+          }
+
+          // Stage 4: Extract task name marker
           stage.regex {
             expression = "^TASK\\s+\\[(?P<task_name_marker>[^\\]]+)\\]"
           }
 
-          // Stage 3: Extract recap marker
+          // Stage 5: Extract recap marker
           stage.regex {
             expression = "^PLAY\\s+RECAP\\s+(?P<recap_marker>\\*+)"
           }
 
-          // Stage 4: Extract play name marker
+          // Stage 6: Extract play name marker
           stage.regex {
             expression = "^PLAY\\s+\\[(?P<play_name_marker>[^\\]]+)\\]\\s+\\*+"
           }
 
-          // Stage 5: Extract timestamp from log content
+          // Stage 7: Extract timestamp from log content
           stage.regex {
             expression = "(?P<real_timestamp>\\w+ \\d{2} \\w+ \\d{4}  \\d{2}:\\d{2}:\\d{2} [+-]\\d{4})"
           }
 
-          // Stage 6: Extract status from TASK entries
+          // Stage 8: Extract status from TASK entries with override logic
+          // 8a: Extract 'included' status first (lowest priority, different format)
           stage.regex {
-            expression = "(?P<status>ok|changed|failed|fatal|skipping|included):\\s+\\[(?P<host>[^\\]]+)\\]"
+            expression = "(?P<status>included):\\s+\\S+\\s+for\\s+(?P<host>\\S+)"
           }
 
-          // Stage 7: Promote markers to labels (needed for match selectors)
+          // 8b: Extract standard status (ok, changed, failed, fatal, skipping - overrides included)
+          stage.regex {
+            expression = "(?P<status>ok|changed|failed|fatal|skipping):\\s+\\[(?P<host>[^\\]]+)\\]"
+          }
+
+          // 8c: Override status to ensure failed/fatal takes priority
+          // Note: This runs after 8b to guarantee failed/fatal overrides other statuses
+          // even if they appear later in the log line (e.g., "failed: [host1]" followed by "ok: [host2]")
+          stage.regex {
+            expression = "(?P<status>failed|fatal):\\s+\\[(?P<host>[^\\]]+)\\]"
+          }
+
+          // 8d: Override status if "...ignoring" appears at line end
+          stage.regex {
+            expression = "\\.\\.\\.(?P<status>ignoring)\\s*$"
+          }
+
+          // Stage 9: Promote markers to labels (needed for match selectors)
           stage.labels {
             values = {
               task_name_marker = "",
@@ -596,7 +628,7 @@ alloy:
             }
           }
 
-          // Stage 8: Set log_type = 'task' if task_name_marker exists
+          // Stage 10: Set log_type = 'task' if task_name_marker exists
           stage.match {
             selector = "{task_name_marker!=\"\"}"
             stage.static_labels {
@@ -606,7 +638,7 @@ alloy:
             }
           }
 
-          // Stage 9: Set log_type = 'recap' if recap_marker exists and log_type not set
+          // Stage 11: Set log_type = 'recap' if recap_marker exists and log_type not set
           stage.match {
             selector = "{recap_marker!=\"\",log_type=\"\"}"
             stage.static_labels {
@@ -616,7 +648,7 @@ alloy:
             }
           }
 
-          // Stage 10: Set log_type = 'play' if play_name_marker exists and log_type not set
+          // Stage 12: Set log_type = 'play' if play_name_marker exists and log_type not set
           stage.match {
             selector = "{play_name_marker!=\"\",log_type=\"\"}"
             stage.static_labels {
@@ -626,7 +658,7 @@ alloy:
             }
           }
 
-          // Stage 11: Fallback for unmatched entries
+          // Stage 13: Fallback for unmatched entries
           stage.match {
             selector = "{log_type=\"\"}"
             stage.static_labels {
@@ -636,14 +668,7 @@ alloy:
             }
           }
 
-          // Stage 12: Add status as label
-          stage.labels {
-            values = {
-              status = "",
-            }
-          }
-
-          // Stage 13: Convert log_type and real_timestamp to structured metadata
+          // Stage 14: Convert log_type, real_timestamp, and status to structured metadata
           stage.structured_metadata {
             values = {
               log_type       = "",
@@ -651,13 +676,20 @@ alloy:
             }
           }
 
-          // Stage 14: Drop temporary marker labels (cleanup)
-          stage.label_drop {
+          // Stage 15: Add status as label
+          stage.labels {
+            values = {
+              status = "",
+            }
+          }
+
+
+          // Stage 16: Keep only desired labels (filename and cluster_name)
+          stage.label_keep {
             values = [
-              "task_name_marker",
-              "recap_marker",
-              "play_name_marker",
-              "log_type",
+              "filename",
+              "cluster_name",
+              "status",
             ]
           }
         }
@@ -666,17 +698,12 @@ alloy:
         loki.write "loki" {
           endpoint {
             url = "http://loki:3100/loki/api/v1/push"
-            
+
             // Optional: Add basic auth if required
             // basic_auth {
             //   username = "admin"
             //   password = "password"
             // }
-          }
-
-          // Optional: External labels for all logs
-          external_labels = {
-            source = "alloy",
           }
         }
   rbac:
