@@ -200,6 +200,7 @@ During installation, you'll be prompted to configure:
 - Model name (e.g., the model deployed on your RHOAI model server)
 - Temperature (optional — defaults are provided)
 
+> **📝 Note:** You can also use step 2 from the local deployment section before running the install command and skip the prompting part.
 
 #### Additional commands
 
