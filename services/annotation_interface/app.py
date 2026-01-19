@@ -24,7 +24,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  "
     f"[{SERVICE_NAME}]  "
-    "%(name)s  "
     "%(filename)s:%(lineno)d  |  %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -140,7 +139,7 @@ class DataAnnotationApp:
             self.data = []
             self.entry_index_map = {}
         except Exception as e:
-            logger.error(
+            logger.debug(
                 f"Error loading data from database table '{self.table_name}': {e}"
             )
             self.all_data = []
