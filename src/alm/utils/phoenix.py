@@ -10,7 +10,7 @@ def register_phoenix():
     tracer_provider = register(
         project_name="ansible-log-monitor",
         endpoint=phoenix_endpoint,
-        auto_instrument=True,
+        # auto_instrument=True,
     )
 
     # Explicitly instrument LangChain for Phoenix tracing

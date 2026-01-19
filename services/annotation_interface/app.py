@@ -152,14 +152,14 @@ class DataAnnotationApp:
         try:
             if os.path.exists(self.feedback_file):
                 with open(self.feedback_file, "r") as f:
-                    logger.info(f"Loading feedback from {self.feedback_file}")
+                    logger.debug(f"Loading feedback from {self.feedback_file}")
                     self.feedback_data = json.load(f)
 
                 # Restore evaluation results from saved feedback data
                 self._restore_eval_results_from_feedback()
             else:
                 self.feedback_data = []
-                logger.info(f"No feedback file found at {self.feedback_file}")
+                logger.debug(f"No feedback file found at {self.feedback_file}")
         except Exception as e:
             logger.error(f"Error loading feedback: {e}")
             self.feedback_data = []
@@ -198,16 +198,16 @@ class DataAnnotationApp:
 
         if need_to_run_evaluation:
             self.run_evaluation_on_feedback()
-        logger.info(f"Need to run evaluation: {need_to_run_evaluation}")
-        logger.info(f"Eval count: {eval_count}")
-        logger.info(f"Success count: {success_count}")
+        logger.debug(f"Need to run evaluation: {need_to_run_evaluation}")
+        logger.debug(f"Eval count: {eval_count}")
+        logger.debug(f"Success count: {success_count}")
         if eval_count > 0:
             self.eval_summary = {
                 "total": eval_count,
                 "success": success_count,
                 "run": True,
             }
-            logger.info(f"Restored {eval_count} evaluation results from feedback data")
+            logger.debug(f"Restored {eval_count} evaluation results from feedback data")
 
     def toggle_cluster_sampling(
         self, show_sample: bool

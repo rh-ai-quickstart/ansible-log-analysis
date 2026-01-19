@@ -1,4 +1,4 @@
-# Agent Assistant for Log Analysis – Quick Start
+# Agent Assistant for Ansible Log Analysis – Quick Start
 
 An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to the right experts.
 
@@ -360,7 +360,7 @@ make local/uninstall
 
 ## Tags
 
-* Title: Ansible Agent AI Log Analysis
+* Title: Agent Assistant for Ansible Log Analysis
 * Description: An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to experts.
 * Industry: Adopt and scale AI
 * Product: Red Hat OpenShift AI, Ansible Automation Platform
