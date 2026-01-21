@@ -1,6 +1,6 @@
 # Agent Assistant for Ansible Log Analysis – Quick Start
 
-An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to the right experts.
+Supercharge your AAP clusters: an AI agent that detects Ansible log errors, suggests step-by-step fixes using AAP logs, and routes issues to the right experts.
 
 ## Table of contents
 
