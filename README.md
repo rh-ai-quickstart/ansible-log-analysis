@@ -1,6 +1,6 @@
-# Agent Assistant for Ansible Log Analysis – Quick Start
+# AI-Driven Ansible Error Troubleshooting Agent - Less Manual, More Speed
 
-Supercharge your AAP clusters: an AI agent that detects Ansible log errors, suggests step-by-step fixes using AAP logs, and routes issues to the right experts.
+Resolve Ansible errors quicker: An AI agent that detects Ansible log errors, suggests step-by-step fixes using AAP logs, and routes issues to the right experts.
 
 ## Table of contents
 
@@ -29,14 +29,6 @@ Supercharge your AAP clusters: an AI agent that detects Ansible log errors, sugg
 
 Organizations running Ansible automation at scale face significant challenges when errors occur. Log analysis is manual, time-consuming, and requires specialized knowledge across multiple domains (AWS, Kubernetes, networking, etc.). When failures happen, teams spend valuable time searching through logs, identifying the right experts, and waiting for solutions.
 
-### Our Solution
-
-An AI-powered log analysis system that automatically:
-- Detects and categorizes Ansible errors in real-time
-- Routes issues to appropriate experts based on authorization levels
-- Provides contextual, step-by-step solutions using AI agents
-- Learns from historical resolutions to improve future recommendations
-
 ### Current Manual Process
 
 A human analyst is:
@@ -48,6 +40,22 @@ A human analyst is:
     Bug in the playbook source code \- talk with the programmer.  
 * The authenticated person needs to **understand how to solve the problem**.  
 * Solve the problem.
+
+A major issue with the current manual process (before our solution) is that resolving more error logs requires increasing human headcount, which is highly costly.
+
+Our solution represents an automation approach that significantly lowers operational costs compared to manual resolution.
+
+### Our Solution
+
+An AI-powered log analysis system that automatically:
+- Detects and categorizes Ansible errors in real-time
+- Routes issues to appropriate experts based on authorization levels
+- Provides contextual, step-by-step solutions using AI agents
+- Learns from historical resolutions to improve future recommendations
+
+By automating error detection, expert routing, and solution generation, the ops/platform team can resolve issues much faster, reducing mean time to resolution (MTTR). As your automation needs grow, the AI scales effortlessly alongside you, without requiring any additional staff.
+This allows business leaders to significantly reduce operational costs while continuing to expand their capabilities.
+
 
 ### Our Solution Stack
 
@@ -151,6 +159,7 @@ Memory: 10Gi
 Storage: 50Gi-200Gi  
 - 50Gi for using the mock data  
 - For a large amount of logs, this needs to be increased
+- **Optional:** GPU — required if you plan to deploy your own model on OpenShift AI, for deployment refer to [References](#references).
 
 ### Minimum software requirements
 
@@ -360,7 +369,7 @@ make local/uninstall
 
 ## Tags
 
-* Title: Agent Assistant for Ansible Log Analysis
+* Title: AI-Driven Ansible Error Troubleshooting Agent - Less Manual, More Speed
 * Description: An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to experts.
 * Industry: Adopt and scale AI
 * Product: Red Hat OpenShift AI, Ansible Automation Platform
