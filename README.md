@@ -1,6 +1,6 @@
-# AI-Driven Ansible Error Troubleshooting Agent - Less Manual, More Speed
+# Accelerate Ansible troubleshooting with intelligent log analysis
 
-Resolve Ansible errors quicker: An AI agent that detects Ansible log errors, suggests step-by-step fixes using AAP logs, and routes issues to the right experts.
+Act on suggestions from an AI agent that identifies Ansible errors, routes them to the right experts, and offers guided remediation steps for faster resolution.
 
 ## Table of contents
 
@@ -369,8 +369,6 @@ make local/uninstall
 
 ## Tags
 
-* Title: AI-Driven Ansible Error Troubleshooting Agent - Less Manual, More Speed
-* Description: An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to experts.
 * Industry: Adopt and scale AI
 * Product: Red Hat OpenShift AI, Ansible Automation Platform
 * Use case: Log Analysis, Analyst Assistant, Intelligent Troubleshooting
