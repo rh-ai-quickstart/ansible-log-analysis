@@ -1,6 +1,6 @@
-# AI-Driven Ansible Error Troubleshooting Agent - Less Manual, More Speed
+# Accelerate Ansible troubleshooting with intelligent log analysis
 
-Resolve Ansible errors quicker: An AI agent that detects Ansible log errors, suggests step-by-step fixes using AAP logs, and routes issues to the right experts.
+Act on suggestions from an AI agent that identifies Ansible errors, routes them to the right experts, and offers guided remediation steps for faster resolution.
 
 ## Table of contents
 
@@ -152,6 +152,8 @@ Load the trained clustering model.
 
 ## Requirements
 
+NOTE: This Quickstart assumes a large language model is already deployed in your environment. Guidance for deploying models is available in the [References](#references) section.
+
 ### Minimum hardware requirements 
 
 CPU: 3-4 cores  
@@ -167,7 +169,7 @@ Storage: 50Gi-200Gi
 - **Red Hat OpenShift AI** 2.25.0 or later (for model serving and data science workloads)
 - **Helm** 3.0.0 or later
 - **oc CLI** (for OpenShift)
-- **LLM Model Server** — Red Hat OpenShift AI model serving (vLLM) recommended for hosting your LLM with enterprise features or OpenAI cradetionals
+- **LLM Model Server** — Red Hat OpenShift AI model serving (vLLM) recommended for hosting your LLM with enterprise features or OpenAI credentials.
 
 #### Local Development Requirements
 - Podman and Podman Compose or Docker and Docker Compose 
@@ -369,9 +371,6 @@ make local/uninstall
 
 ## Tags
 
-* Title: AI-Driven Ansible Error Troubleshooting Agent - Less Manual, More Speed
-* Description: An AI agent for AAP clusters that detects Ansible log errors, suggests step-by-step fixes using cluster-wide logs, and routes issues to experts.
 * Industry: Adopt and scale AI
 * Product: Red Hat OpenShift AI, Ansible Automation Platform
-* Use case: Log Analysis, Analyst Assistant, Intelligent Troubleshooting
 * Contributor org: Red Hat
