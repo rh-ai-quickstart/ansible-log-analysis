@@ -14,16 +14,24 @@ Given a log summary, full log content, and log labels information, identify **ON
    - Example: ✓ "Get all timeout errors from the API service in the last hour"
    - Example: ✗ "Get timeout errors AND get deployment logs AND check authentication failures"
 
-2. **Request only LOG DATA** - Only ask for data that exists in log files/streams:
-   - ✓ Application logs, system logs, service logs, error logs
-   - ✓ Pod logs, container logs, operator logs
-   - ✓ Deployment logs, reconciliation logs, audit logs
+2. **Request only KNOWN LOG SOURCES** - Only ask for logs from sources you have evidence exist:
+
+   **WHAT YOU CAN REQUEST:**
+   - ✓ Logs from the same filename shown in log_labels.filename (different time ranges, status, log_type)
+   - ✓ Logs from files explicitly mentioned in the log content (e.g., if log says "see job_123.txt", you can request job_123.txt)
+   - ✓ Logs from files you've seen in previous query results during this investigation
+   - ✓ Logs from specific filenames referenced in error messages or stack traces
+
+   **WHAT YOU CANNOT REQUEST (No evidence):**
+   - ✗ Generic requests like "application logs", "system logs", "deployment logs" without specific filenames
+   - ✗ Files inferred from service/component names without evidence (e.g., "nginx.log" just because log mentions nginx service)
+   - ✗ Related services or components not explicitly referenced with filenames
    - ✗ External metrics (CPU, memory from monitoring systems)
    - ✗ Live system state (current pod status, API responses)
    - ✗ Configuration files or secrets
    - ✗ Database queries or data
 
-   If something was logged with specific log labels, you can request it. If it wasn't logged, don't request it.
+   **Critical Rule**: You can ONLY request logs from files you have CONCRETE EVIDENCE exist - either from the log labels, explicitly mentioned in the log content, or seen in previous results. Do NOT speculate or guess filenames.
 
 ## Context
 
@@ -138,15 +146,26 @@ Use the log labels information to understand the source and context of the curre
 
 - **filename**: The most important field - the log file source (e.g., specific service log file)
 - **service_name**: The service that generated this log
-- **job**: The job or process identifier
-- **detected_level**: The log level (error, warn, info, debug, unknown)
+- **cluster_name**: The cluster identifier
+- **status**: Task execution status - **Only applies to TASK log_type, indicates task execution outcome**
+  - VALID VALUES: "ok", "changed", "failed", "fatal", "ignoring", "skipping", "included"
+  - DO NOT use: "error", "warn", "info", "debug" (these are NOT valid status values)
+- **log_type**: Log entry type - indicates the log structure and format
+  - VALID VALUES: "task", "recap", "play", "other"
 
 Use these fields to identify related log sources and missing data:
 
 - **Same filename, different time range**: Look for related events before/after in the same log file. **IMPORTANT: Always reference the Log Timestamp when requesting logs from specific time ranges to ensure you get the most relevant chronological context.**
 - **Different files from same service**: Check other log files from the same service
 - **Related services**: Identify dependent services that might have relevant logs
-- **Different log levels**: Sometimes info/debug logs contain context that error logs don't show
+- **Different status values**: For TASK log_type, logs with different status values provide additional context (e.g., checking 'changed' or 'ok' status when investigating 'failed' status in the same playbook run)
+- **Different log types**: Task logs show individual task execution with status, recap logs show overall playbook results, play logs show playbook structure
+
+**Critical Note on Status Field**:
+The `status` field is only meaningful for logs with `log_type="task"` as it represents
+the execution status of individual Ansible tasks (ok, changed, failed, fatal, ignoring,
+skipping, included). Other log types (play, recap, other) represent structural or summary
+information and do not have task execution status - they will have empty status values.
 
 **Critical Note on Timestamp Usage:**
 The Log Timestamp is essential for retrieving the most relevant logs. When requesting additional log data, always consider the timestamp to:

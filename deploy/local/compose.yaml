@@ -12,7 +12,7 @@ services:
       - PORT=8080
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
 
   loki:
     image: grafana/loki:3.6.2
@@ -24,16 +24,6 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - alm
-    healthcheck:
-      # Loki minimal image doesn't have shell tools (no sh, wget, curl, etc.)
-      # Use the Loki binary itself to verify the container is functional
-      # This checks that the binary is accessible and can execute
-      # Note: This doesn't check HTTP readiness, but verifies the service is running
-      test: ["CMD", "/usr/bin/loki", "-version"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s  # Give Loki time to fully initialize (can take 30-60s)
 
     deploy:
       resources:
@@ -98,7 +88,7 @@ services:
       - alm
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
 
   aap-mock:
     # Use pre-built image from Quay.io (recommended)

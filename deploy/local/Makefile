@@ -464,5 +464,5 @@ restart: stop start ## 🔄 Restart all services
 
 clean: ## 🧹 Clean PID files and logs
 	@echo "🧹 Cleaning up PID files and logs..."
-	@docker-compose down -v
+	@$(COMPOSE_CMD) down -v
 	@echo "   ✓ Cleanup completed"
