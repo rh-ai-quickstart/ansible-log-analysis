@@ -6,20 +6,6 @@ export $(shell sed 's/=.*//' ../../.env | xargs)
 
 COMPOSE_CMD := $(shell command -v docker-compose 2>/dev/null || command -v podman-compose 2>/dev/null)
 
-# Auto-detect container runtime socket (Docker or Podman)
-# Podman rootless: ${XDG_RUNTIME_DIR}/podman/podman.sock
-# Podman root: /run/podman/podman.sock
-# Docker: /var/run/docker.sock
-CONTAINER_SOCK := $(shell \
-	if [ -S "$${XDG_RUNTIME_DIR}/podman/podman.sock" ]; then \
-		echo "$${XDG_RUNTIME_DIR}/podman/podman.sock"; \
-	elif [ -S "/run/podman/podman.sock" ]; then \
-		echo "/run/podman/podman.sock"; \
-	else \
-		echo "/var/run/docker.sock"; \
-	fi)
-export CONTAINER_SOCK
-
 train: run-whole-training-pipeline
 training: run-whole-training-pipeline
 
