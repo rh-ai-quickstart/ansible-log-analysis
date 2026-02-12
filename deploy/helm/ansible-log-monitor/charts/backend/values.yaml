@@ -186,7 +186,7 @@ env:
   - name: COLLECTOR_ENDPOINT
     value: "http://alm-phoenix:6006/v1/traces"
   - name: LOKI_MCP_SERVER_URL
-    value: "http://mcp-loki:8080/stream"
+    value: "http://mcp-loki-server:8080/stream"
   - name: RAG_SERVICE_URL
     value: "http://alm-rag:8002"
   - name: RAG_ENABLED
