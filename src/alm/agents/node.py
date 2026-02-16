@@ -153,7 +153,7 @@ def _cluster_logs(embeddings: np.ndarray) -> Tuple[ClusterMixin, np.ndarray]:
 
     elif algorithm.lower() == "meanshift":
         # Mean Shift - Automatically determines number of clusters
-        bandwidth = estimate_bandwidth(embeddings, quantile=0.2)
+        bandwidth = estimate_bandwidth(embeddings, quantile=0.05)
         cluster_model = MeanShift(bandwidth=bandwidth)  # Auto-estimate bandwidth
         cluster_labels = cluster_model.fit_predict(embeddings)
 
