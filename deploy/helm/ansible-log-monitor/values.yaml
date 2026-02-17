@@ -452,6 +452,34 @@ alloy:
           persistentVolumeClaim:
             claimName: ansible-logs-pvc
 
+    # AAP Log Collector sidecar container
+    # Polls aap-mock API and writes job logs to shared PVC for Alloy ingestion
+    extraContainers:
+      - name: alm-aap-log-collector
+        image: quay.io/rh-ai-quickstart/alm-aap-log-collector:latest
+        imagePullPolicy: Always
+        env:
+          - name: AAP_API_URL
+            value: "http://alm-aap-mock:8080"
+          - name: OUTPUT_DIR
+            value: "/var/log/ansible_logs"
+          - name: POLL_INTERVAL
+            value: "300"  # seconds (5 minutes)
+          - name: CLUSTER_NAME
+            value: "default-cluster"
+          - name: LOG_LEVEL
+            value: "INFO"
+        volumeMounts:
+          - name: ansible-logs
+            mountPath: /var/log/ansible_logs
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+
   alloy:
     # Commented out to avoid emptyDir mount (logs are now bundled in alloy image as workaround)
     # # Volume mounts for the Alloy container
