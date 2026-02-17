@@ -79,7 +79,10 @@ def fetch_job_logs(api_url: str, job_id: int) -> str:
         logger.debug(f"Fetching logs for job {job_id}")
         response = requests.get(f"{api_url}/api/v2/jobs/{job_id}/stdout/", timeout=60)
         response.raise_for_status()
-        return response.text
+        # Parse JSON response and extract content field
+        # This automatically unescapes \n characters to proper newlines
+        data = response.json()
+        return data.get("content", "")
     except requests.exceptions.Timeout:
         logger.error(f"Timeout fetching logs for job {job_id}")
         raise
