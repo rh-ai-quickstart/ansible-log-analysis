@@ -81,14 +81,41 @@ services:
       # NOTE: :z suffix is for SELinux (RHEL/Fedora/CentOS)
       # macOS users: remove :z if you get "lsetxattr: operation not supported" error
       - ./config/promtail/promtail-local-config.yaml:/etc/promtail/config.yaml:z
-      # Mount ansible logs directory (read-only)
-      - ../../data/logs:/var/log/ansible_logs:ro,z
+      # Mount ansible logs from shared volume (read-only)
+      - ansible_logs:/var/log/ansible_logs:ro,z
     command: -config.file=/etc/promtail/config.yaml
     networks:
       - alm
     depends_on:
       loki:
         condition: service_started
+
+  aap-log-collector:
+    image: quay.io/rh-ai-quickstart/alm-aap-log-collector:latest
+    container_name: aap-log-collector
+    environment:
+      - AAP_API_URL=http://aap-mock:8080
+      - OUTPUT_DIR=/var/log/ansible_logs
+      - POLL_INTERVAL=300  # 5 minutes (in seconds)
+      - CLUSTER_NAME=default-cluster
+      - LOG_LEVEL=INFO
+      - PAGE_SIZE=100
+    volumes:
+      # NOTE: :z suffix is for SELinux (RHEL/Fedora/CentOS)
+      # macOS users: remove :z if you get "lsetxattr: operation not supported" error
+      - ansible_logs:/var/log/ansible_logs:z
+    networks:
+      - alm
+    depends_on:
+      aap-mock:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python -m app.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   aap-mock:
     # Use pre-built image from Quay.io (recommended)
@@ -278,3 +305,4 @@ volumes:
   aap_mock_logs:
   loki_data:
   minio_data:
+  ansible_logs:

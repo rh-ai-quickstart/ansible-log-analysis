@@ -54,10 +54,7 @@ def fetch_all_jobs(api_url: str, page_size: int = 100) -> List[Dict[str, Any]]:
 
             page += 1
 
-        except requests.exceptions.Timeout:
-            logger.error(f"Timeout fetching page {page} from {api_url}")
-            raise
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"Error fetching jobs from {api_url}: {e}")
             raise
 
@@ -79,11 +76,11 @@ def fetch_job_logs(api_url: str, job_id: int) -> str:
         logger.debug(f"Fetching logs for job {job_id}")
         response = requests.get(f"{api_url}/api/v2/jobs/{job_id}/stdout/", timeout=60)
         response.raise_for_status()
-        return response.text
-    except requests.exceptions.Timeout:
-        logger.error(f"Timeout fetching logs for job {job_id}")
-        raise
-    except requests.exceptions.RequestException as e:
+        # Parse JSON response and extract content field
+        # This automatically unescapes \n characters to proper newlines
+        data = response.json()
+        return data.get("content", "")
+    except Exception as e:
         logger.error(f"Error fetching logs for job {job_id}: {e}")
         raise
 
