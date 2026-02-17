@@ -15,6 +15,7 @@ jobs:
       ui: ${{ steps.filter.outputs.ui }}
       annotation: ${{ steps.filter.outputs.annotation }}
       clustering: ${{ steps.filter.outputs.clustering }}
+      collector: ${{ steps.filter.outputs.collector }}
     steps:
       - uses: dorny/paths-filter@v2
         id: filter
@@ -26,6 +27,8 @@ jobs:
               - 'services/annotation_interface/**'
             clustering:
               - 'services/clustering/**'
+            collector:
+              - 'services/aap-log-collector/**'
 
   build-image:
     name: Build and Push container image
@@ -44,6 +47,9 @@ jobs:
           - name: alm-clustering
             context: services/clustering
             image-name: alm-clustering
+          - name: alm-aap-log-collector
+            context: services/aap-log-collector
+            image-name: alm-aap-log-collector
 
     steps:
       - name: Checkout repository
@@ -68,7 +74,8 @@ jobs:
         if: |
           (matrix.image-name == 'alm-ui' && needs.detect-changes.outputs.ui == 'true') ||
           (matrix.image-name == 'alm-annotation-interface' && needs.detect-changes.outputs.annotation == 'true') ||
-          (matrix.image-name == 'alm-clustering' && needs.detect-changes.outputs.clustering == 'true')
+          (matrix.image-name == 'alm-clustering' && needs.detect-changes.outputs.clustering == 'true') ||
+          (matrix.image-name == 'alm-aap-log-collector' && needs.detect-changes.outputs.collector == 'true')
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
