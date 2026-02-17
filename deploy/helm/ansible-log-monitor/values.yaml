@@ -26,7 +26,7 @@ mcp-servers:
   mcp-servers:
     weather:
       enabled: false                                     # Disable default weather server
-    loki:
+    loki-server:
       enabled: true
       deploymentMode: deployment                         # How to deploy (deployment = standard Kubernetes)
       transport: sse
