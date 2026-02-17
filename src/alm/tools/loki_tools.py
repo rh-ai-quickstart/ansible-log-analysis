@@ -5,7 +5,7 @@ Each tool represents a common log querying pattern with rich descriptions.
 
 import os
 import json
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 from langchain_core.tools import tool
 
@@ -16,8 +16,9 @@ from alm.agents.loki_agent.constants import (
     DEFAULT_START_TIME,
     DIRECTION_FORWARD,
     LOGQL_FILE_NAME_QUERY_TEMPLATE,
-    LOGQL_JOB_WILDCARD_QUERY,
-    LOGQL_LEVEL_FILTER_TEMPLATE,
+    LOGQL_SERVICE_NAME_WILDCARD_QUERY,
+    LOGQL_STATUS_FILTER_TEMPLATE,
+    LOGQL_LOG_TYPE_FILTER_TEMPLATE,
     LOGQL_TEXT_SEARCH_TEMPLATE,
     MAX_LOGS_PER_QUERY,
 )
@@ -25,7 +26,6 @@ from alm.agents.loki_agent.schemas import (
     DEFAULT_LINE_ABOVE,
     DEFAULT_LIMIT,
     FileLogSchema,
-    DetectedLevel,
     SearchTextSchema,
     LogLinesAboveSchema,
     PlayRecapSchema,
@@ -34,6 +34,7 @@ from alm.agents.loki_agent.schemas import (
     LogToolOutput,
     ToolStatus,
 )
+from alm.models import LogStatus, LogType
 from alm.tools.loki_helpers import escape_logql_string, validate_timestamp
 from alm.utils.logger import get_logger
 
@@ -169,24 +170,48 @@ async def get_logs_by_file_name(
     log_timestamp: Optional[str] = None,
     start_time: str | int = DEFAULT_START_TIME,
     end_time: str = DEFAULT_END_TIME,
-    level: DetectedLevel | None = None,
+    status_list: Optional[List[LogStatus]] = None,
+    log_type_list: Optional[List[LogType]] = None,
     limit: int = DEFAULT_LIMIT,
     direction: Literal["backward", "forward"] = DEFAULT_DIRECTION,
 ) -> str:
     """
     Get logs for a specific file with time ranges relative to a reference timestamp,
-    optionally filtered by log level.
+    optionally filtered by status and log type.
 
     Perfect for queries like:
     - "show me logs from nginx.log 5 minutes before this error"
-    - "get error logs from api.log between 1 hour before and 10 minutes before this timestamp"
+    - "get failed and fatal logs from job_12345.txt between 1 hour before and 10 minutes before this timestamp"
+    - "show me play and recap logs from job_12345.txt"
+
+    Time range examples:
+    - start_time="-1h", end_time="-10m": 1 hour before to 10 minutes before the timestamp
+    - start_time="now", end_time="+1h": from the timestamp to 1 hour after
+
+    Note: Status only applies to TASK log_type. Other log types have empty status values.
     """
     try:
-        # Build LogQL query for file name
-        query_parts = [LOGQL_FILE_NAME_QUERY_TEMPLATE.format(file_name=file_name)]
+        # Build base selector with filename
+        selector_parts = [LOGQL_FILE_NAME_QUERY_TEMPLATE.format(file_name=file_name)]
 
-        if level:
-            query_parts.append(LOGQL_LEVEL_FILTER_TEMPLATE.format(level=level.value))
+        # Convert status list to pipe-separated string and add to selector
+        # Status is a LABEL, so it goes in the {} selector
+        if status_list:
+            status_str = "|".join([s.value for s in status_list])
+            selector_parts.append(
+                ", " + LOGQL_STATUS_FILTER_TEMPLATE.format(status=status_str)
+            )
+
+        # Close the selector
+        query_parts = ["".join(selector_parts) + "}"]
+
+        # Convert log_type list to pipe-separated string and add as metadata filter
+        # log_type is STRUCTURED METADATA, so it goes after |
+        if log_type_list:
+            log_type_str = "|".join([lt.value for lt in log_type_list])
+            query_parts.append(
+                LOGQL_LOG_TYPE_FILTER_TEMPLATE.format(log_type=log_type_str)
+            )
 
         query = "".join(query_parts)
 
@@ -216,11 +241,16 @@ async def search_logs_by_text(
     Search for logs containing specific text with time ranges relative to a reference timestamp,
     across all logs or in a specific file.
 
-
     Perfect for queries like:
     - "find logs containing 'timeout' 5 minutes before this error"
     - "search for 'user login' between 1 hour before and 30 minutes before this timestamp"
     - "show logs with 'database connection' around this time"
+    - "find errors in the 10 minutes after this event"
+
+    Time range examples:
+    - start_time="-30m", end_time="now": 30 minutes before to the timestamp
+    - start_time="-1h", end_time="-10m": 1 hour before to 10 minutes before the timestamp
+    - start_time="now", end_time="+15m": from the timestamp to 15 minutes after
 
     Note: This is a case-sensitive text search using LogQL's |= operator.
     """
@@ -233,14 +263,15 @@ async def search_logs_by_text(
             # Search within a specific file
             query = (
                 LOGQL_FILE_NAME_QUERY_TEMPLATE.format(file_name=file_name)
+                + "}"
                 + " "
                 + LOGQL_TEXT_SEARCH_TEMPLATE.format(text=escaped_text)
             )
         else:
             # Search across all logs
-            # Use job=~".+" to match any job with non-empty value (Loki requirement)
+            # Use service_name=~".+" to match any service with non-empty value (Loki requirement)
             query = (
-                LOGQL_JOB_WILDCARD_QUERY
+                LOGQL_SERVICE_NAME_WILDCARD_QUERY
                 + " "
                 + LOGQL_TEXT_SEARCH_TEMPLATE.format(text=escaped_text)
             )
@@ -271,15 +302,23 @@ async def get_play_recap(
 
     Perfect for queries like:
     - "show me the play recap after this error timestamp"
-    - "get the playbook result for the job that failed at this time"
+    - "get the playbook result for the task that failed at this time"
     - "give me an overview of the tasks in this playbook"
+
+    buffer_time example:
+    - "12h" or "+12h": search 12 hours forward
     """
     try:
         # Build LogQL query using regex suffix match
         query = (
             LOGQL_FILE_NAME_QUERY_TEMPLATE.format(file_name=file_name)
+            + "}"
             + ' | log_type="recap"'
         )
+
+        if buffer_time.startswith("-"):
+            logger.warning("Buffer time starts with '-', setting to default of 6h")
+            buffer_time = "6h"
 
         # Execute query with forward direction and limit=1 to get only the NEXT recap
         result = await execute_loki_query(

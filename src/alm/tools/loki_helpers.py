@@ -107,10 +107,14 @@ def format_rfc3339_utc(dt: datetime) -> str:
 
 def parse_relative_offset(time_str: str) -> timedelta:
     """
-    Parse relative time string like '-5m', '2h', '-1d' into timedelta.
+    Parse relative time string like '-5m', '+10m', '2h', '-1d' into timedelta.
+
+    Supports both backward (-) and forward (+) relative times:
+    - '-5m' or '5m': 5 minutes backward (before reference)
+    - '+10m': 10 minutes forward (after reference)
 
     Args:
-        time_str: Relative time string (e.g., "-5m", "2h", "-1d")
+        time_str: Relative time string (e.g., "-5m", "+10m", "2h", "-1d")
 
     Returns:
         timedelta object representing the offset
@@ -124,8 +128,11 @@ def parse_relative_offset(time_str: str) -> timedelta:
 
     sign, value, unit = match.groups()
     value = int(value)
+
+    # Handle sign: '-' means negative (backward), '+' or empty means positive (forward)
     if sign == "-":
         value = -value
+    # '+' or no sign means positive (forward in time)
 
     return timedelta(**{TIME_UNIT_MAP[unit]: value})
 
@@ -215,8 +222,8 @@ def parse_time_input(time_str: str, reference_timestamp: Optional[str] = None) -
     # Handle "now"
     if not time_str or time_str.lower() == "now":
         if ref_datetime:
-            # "now" relative to reference timestamp = the reference timestamp itself
-            return format_rfc3339_utc(ref_datetime)
+            # "now" relative to reference timestamp = the reference timestamp itself + small delta to avoid exact match
+            return format_rfc3339_utc(ref_datetime + timedelta(seconds=1))
         else:
             # No reference timestamp: pass "now" to Loki
             return "now"
@@ -345,7 +352,7 @@ def merge_loki_streams(streams: List[Dict], direction: str = DEFAULT_DIRECTION) 
 
     Args:
         streams: List of Loki stream objects, each containing:
-                 - "stream": Dict of labels (detected_level, filename, job, etc.)
+                 - "stream": Dict of labels (detected_level, filename, service_name, cluster_name, etc.)
                  - "values": List of [timestamp, message] pairs
         direction: Loki query direction:
                    - "backward": Streams contain newest-first logs (will be reversed)
@@ -408,7 +415,9 @@ def merge_loki_streams(streams: List[Dict], direction: str = DEFAULT_DIRECTION) 
         # heapq.merge expects sorted iterables and merges them efficiently
         merged_logs = heapq.merge(
             *stream_iterators,
-            key=lambda log: log.log_labels.database_timestamp.timestamp(),  # Sort by database timestamp as float
+            key=lambda log: (
+                log.log_labels.database_timestamp.timestamp()
+            ),  # Sort by database timestamp as float
         )
 
         # Extend all_logs with this file's merged logs

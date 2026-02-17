@@ -29,14 +29,15 @@ async def test_get_more_context_graph():
     print("=" * 80)
 
     # Create a test log entry
-    log_message = r'fatal: [bastion.6jxd6.internal]: FAILED! => {"changed": false, "dest": "/usr/bin/argocd", "elapsed": 0, "msg": "Request failed", "response": "HTTP Error 307: The HTTP server returned a redirect error that would lead to an infinite loop.\\nThe last 30x error message was:\\nTemporary Redirect", "status_code": 307, "url": "https://openshift-gitops-server-openshift-gitops.apps.cluster-6jxd6.6jxd6.sandbox2747.opentlc.com/download/argocd-linux-amd64"}'
-
+    log_message = r"""TASK [ocp4_workload_rhacm_hypershift : Abort] **********************************
+Monday 04 August 2025  20:00:55 +0000 (0:00:00.029)       1:36:38.896 ********* 
+fatal: [bastion.6jxd6.internal]: FAILED! => {"changed": false, "msg": "Cluster creation failed. Aborting."}"""
     log_entry = LogEntry(
         log_labels=LogLabels(
             detected_level=DetectedLevel.ERROR,
             filename="/var/log/ansible_logs/failed/job_1461865.txt",
-            job="failed_logs",
             service_name="failed_logs",
+            cluster_name="test_cluster",
         ),
         message=log_message,
         timestamp=datetime.now(),

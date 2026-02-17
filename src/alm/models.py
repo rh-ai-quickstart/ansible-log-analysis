@@ -64,10 +64,14 @@ class DetectedLevel(str, Enum):
 
 
 class LogStatus(str, Enum):
+    """Status for task logs (entries with log_type="task"),
+    non-task logs have empty status value."""
+
     OK = "ok"
     CHANGED = "changed"
     FAILED = "failed"
     FATAL = "fatal"
+    IGNORING = "ignoring"
     SKIPPING = "skipping"
     INCLUDED = "included"
 
@@ -88,12 +92,14 @@ class LogLabels(BaseModel):
     filename: str = pydantic.Field(
         default="Unknown filename", description="Filename of the log"
     )
-    job: str = pydantic.Field(default="Unknown job", description="Job of the log")
     log_type: LogType = pydantic.Field(
         default=LogType.OTHER, description="Type of the log"
     )
     service_name: str = pydantic.Field(
         default="Unknown service name", description="Service name of the log"
+    )
+    cluster_name: str = pydantic.Field(
+        default="Unknown cluster", description="Cluster name of the log"
     )
     database_timestamp: datetime = pydantic.Field(
         default_factory=datetime.now, description="Timestamp of the log in the database"
