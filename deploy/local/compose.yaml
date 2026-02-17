@@ -109,7 +109,7 @@ services:
       # Pre-load with flattened logs from .staging/sample-logs/ (created by make prepare-logs)
       # NOTE: :z suffix is for SELinux (RHEL/Fedora/CentOS)
       # macOS users: remove ,z if you get "lsetxattr: operation not supported" error
-      - ../../data/logs/failed:/app/sample-logs:ro,z
+      - .staging/sample-logs/:/app/sample-logs:ro,z
     networks:
       - alm
     # Memory limit for file loading (500 files with events needs ~3-4GB)
