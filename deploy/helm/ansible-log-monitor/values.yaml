@@ -761,7 +761,7 @@ aap-mock:
   enabled: true
   replicaCount: 1
   image:
-    repository: quay.io/ecosystem-appeng/aap-mock
+    repository: quay.io/rh-ai-quickstart/alm-aap-mock
     pullPolicy: Always
     tag: "latest"
   resources:

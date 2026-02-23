@@ -119,7 +119,7 @@ services:
 
   aap-mock:
     # Use pre-built image from Quay.io (recommended)
-    image: quay.io/ecosystem-appeng/aap-mock:latest
+    image: quay.io/rh-ai-quickstart/alm-aap-mock:latest
     # Option: Build locally (uncomment below, comment out image above)
     # build:
     #   context: ../../../aap-log-generator
