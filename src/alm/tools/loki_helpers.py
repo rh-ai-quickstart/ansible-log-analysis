@@ -24,6 +24,8 @@ from alm.agents.loki_agent.constants import (
     VALID_TIMESTAMP_MAX_YEAR,
     VALID_TIMESTAMP_MIN_YEAR,
 )
+from alm.agents.loki_agent.schemas import LightweightToolResponse
+from alm.tools.loki_tool_cache import _get_tool_result
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -271,7 +273,6 @@ async def find_log_timestamp(
         - timestamp: The timestamp string in nanoseconds if found, None otherwise
         - error_message: Error description if not found, None otherwise
     """
-    from alm.agents.loki_agent.schemas import LogToolOutput
     from alm.tools import search_logs_by_text
 
     logger.debug(
@@ -284,7 +285,8 @@ async def find_log_timestamp(
         days=FALLBACK_LOG_SEARCH_DAYS
     )  # Max time range allowed by Loki
 
-    target_result = await search_logs_by_text.ainvoke(
+    # Tool now returns lightweight response, need to get full result from cache
+    result_json = await search_logs_by_text.ainvoke(
         {
             "text": log_message,
             "file_name": file_name,
@@ -296,7 +298,14 @@ async def find_log_timestamp(
             "limit": 1,
         }
     )
-    target_result = LogToolOutput.model_validate_json(target_result)
+    lightweight_response = LightweightToolResponse.model_validate_json(result_json)
+    target_result = _get_tool_result(lightweight_response.result_id)
+
+    # Handle cache miss
+    if target_result is None:
+        error_msg = f"Cache miss for result_id {lightweight_response.result_id} in find_log_timestamp"
+        logger.error(error_msg)
+        return None, error_msg
 
     if not target_result.logs:
         error_msg = f"Log message '{log_message}' not found in file '{file_name}'"

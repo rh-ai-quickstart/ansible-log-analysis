@@ -13,8 +13,14 @@ from alm.agents.loki_agent.constants import (
     CONTEXT_TRUNCATE_SUFFIX,
     LOKI_AGENT_SYSTEM_PROMPT_PATH,
 )
-from alm.agents.loki_agent.schemas import LogToolOutput, LokiAgentOutput, ToolStatus
+from alm.agents.loki_agent.schemas import (
+    LogToolOutput,
+    LokiAgentOutput,
+    ToolStatus,
+    LightweightToolResponse,
+)
 from alm.llm import get_llm_support_tool_calling
+from alm.tools.loki_tool_cache import _get_tool_result
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -136,10 +142,22 @@ class LokiQueryAgent:
                 tool_result = last_tool_message.content
 
                 try:
-                    # Parse the tool result should be JSON representation of LogToolOutput
-                    log_tool_output_object = LogToolOutput.model_validate_json(
+                    # Parse lightweight response from tool
+                    lightweight_response = LightweightToolResponse.model_validate_json(
                         tool_result
                     )
+
+                    # Retrieve full LogToolOutput from cache
+                    log_tool_output_object = _get_tool_result(
+                        lightweight_response.result_id
+                    )
+
+                    # Handle cache miss - raise exception to trigger error handling
+                    if log_tool_output_object is None:
+                        raise Exception(
+                            f"Cache miss for result_id {lightweight_response.result_id} - this indicates bug in the cache mechanism"
+                        )
+
                     logger.debug(
                         f"Final executed LogQL query: {log_tool_output_object.query}"
                     )

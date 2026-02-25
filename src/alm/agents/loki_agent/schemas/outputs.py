@@ -68,6 +68,16 @@ class LokiAgentOutput(BaseModel):
     )
 
 
+class LightweightToolResponse(BaseModel):
+    """Lightweight tool response for agent context (excludes verbose log content)"""
+
+    result_id: str = Field(description="UUID for retrieving full result from cache")
+    status: ToolStatus = Field(description="Status of the operation")
+    number_of_logs: int = Field(
+        default=0, description="Total number of log entries returned"
+    )
+
+
 class IdentifyMissingDataSchema(BaseModel):
     missing_data_request: str = Field(
         description="Natural language description of what data/context is missing to fully understand and resolve the issue"

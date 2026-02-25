@@ -36,6 +36,7 @@ from alm.agents.loki_agent.schemas import (
 )
 from alm.models import LogStatus, LogType
 from alm.tools.loki_helpers import escape_logql_string, validate_timestamp
+from alm.tools.loki_tool_cache import _store_tool_result
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -123,7 +124,7 @@ async def execute_loki_query(
                 if len(logs) == 0 and not message:
                     message = "No logs found matching the query. Try using a different search term, simpler keywords, or expanding the time range."
 
-                return LogToolOutput(
+                full_output = LogToolOutput(
                     status=ToolStatus.SUCCESS,
                     message=message,
                     logs=logs,
@@ -132,25 +133,28 @@ async def execute_loki_query(
                     execution_time_ms=parsed_result.get("stats", {})
                     .get("summary", {})
                     .get("execTime", 0),
-                ).model_dump_json(indent=2)
+                )
+                return _store_tool_result(full_output)
             except json.JSONDecodeError as e:
                 logger.error("JSON decode error: %s", e)
                 # If not JSON, treat as plain text result
-                return LogToolOutput(
+                full_output = LogToolOutput(
                     status=ToolStatus.SUCCESS,
                     logs=[LogEntry(log_labels=LogLabels(), message=result)],
                     number_of_logs=1,
                     query=query,
-                ).model_dump_json(indent=2)
+                )
+                return _store_tool_result(full_output)
         else:
             # Handle non-JSON or error responses
             logger.warning("Non-JSON result: %s", result)
-            return LogToolOutput(
+            full_output = LogToolOutput(
                 status=ToolStatus.SUCCESS,
                 logs=[LogEntry(log_labels=LogLabels(), message=str(result))],
                 number_of_logs=1,
                 query=query,
-            ).model_dump_json(indent=2)
+            )
+            return _store_tool_result(full_output)
 
     except Exception as e:
         logger.error("MCP query execution failed: %s", str(e), exc_info=True)
@@ -225,7 +229,7 @@ async def get_logs_by_file_name(
         output = LogToolOutput(
             status=ToolStatus.ERROR, message=str(e), number_of_logs=0, logs=[]
         )
-        return output.model_dump_json(indent=2)
+        return _store_tool_result(output)
 
 
 @tool(args_schema=SearchTextSchema)
@@ -286,7 +290,7 @@ async def search_logs_by_text(
         output = LogToolOutput(
             status=ToolStatus.ERROR, message=str(e), number_of_logs=0, logs=[]
         )
-        return output.model_dump_json(indent=2)
+        return _store_tool_result(output)
 
 
 @tool(args_schema=PlayRecapSchema)
@@ -337,7 +341,7 @@ async def get_play_recap(
         output = LogToolOutput(
             status=ToolStatus.ERROR, message=str(e), number_of_logs=0, logs=[]
         )
-        return output.model_dump_json(indent=2)
+        return _store_tool_result(output)
 
 
 def create_log_lines_above_tool(
@@ -424,12 +428,13 @@ def create_log_lines_above_tool(
             )
             target_datetime, is_valid = validate_timestamp(log_timestamp)
             if not is_valid or not target_datetime:
-                return LogToolOutput(
+                output = LogToolOutput(
                     status=ToolStatus.ERROR,
                     message=f"Invalid timestamp: {log_timestamp}, please provide a valid timestamp",
                     number_of_logs=0,
                     logs=[],
-                ).model_dump_json(indent=2)
+                )
+                return _store_tool_result(output)
 
             # Step 2: Calculate time window
             logger.debug("[Step 2] Calculating time window around timestamp")
@@ -443,12 +448,13 @@ def create_log_lines_above_tool(
                 file_name, start_time_rfc3339, end_time_rfc3339
             )
             if error or not isinstance(context_data, LogToolOutput):
-                return LogToolOutput(
+                output = LogToolOutput(
                     status=ToolStatus.ERROR,
                     message=f"Failed to query logs in time window. Error: {error}, Context data: {context_data}",
                     number_of_logs=0,
                     logs=[],
-                ).model_dump_json(indent=2)
+                )
+                return _store_tool_result(output)
 
             # Step 4: Extract N lines before the target
             logger.debug("[Step 4] Extracting %d lines before target", lines_above)
@@ -458,13 +464,14 @@ def create_log_lines_above_tool(
             )
 
             if error:
-                return LogToolOutput(
+                output = LogToolOutput(
                     status=ToolStatus.ERROR,
                     message=error,
                     query=context_data.query,
                     number_of_logs=0,
                     logs=[],
-                ).model_dump_json(indent=2)
+                )
+                return _store_tool_result(output)
 
             logger.debug(
                 "Successfully extracted %d logs (including target)", len(context_logs)
@@ -476,28 +483,28 @@ def create_log_lines_above_tool(
             )
 
             # Step 5: Return the context logs
-            return LogToolOutput(
+            full_output = LogToolOutput(
                 status=ToolStatus.SUCCESS,
                 message=f"Retrieved {len(context_logs) - 1} lines above the target log (total {len(context_logs)} logs including target)",
                 query=context_data.query,
                 number_of_logs=len(context_logs),
                 logs=context_logs,
                 execution_time_ms=context_data.execution_time_ms,
-            ).model_dump_json(indent=2)
+            )
+            return _store_tool_result(full_output)
 
         except Exception as e:
             logger.error("Error in get_log_lines_above: %s", e, exc_info=True)
-
-            return LogToolOutput(
+            output = LogToolOutput(
                 status=ToolStatus.ERROR, message=str(e), number_of_logs=0, logs=[]
-            ).model_dump_json(indent=2)
+            )
+            return _store_tool_result(output)
 
     return get_log_lines_above
 
 
 # List of static tools (tools that don't need closure-bound context)
 # get_log_lines_above is created dynamically via create_log_lines_above_tool()
-# TODO: Add fallback_query tool
 LOKI_STATIC_TOOLS = [
     get_logs_by_file_name,
     search_logs_by_text,
