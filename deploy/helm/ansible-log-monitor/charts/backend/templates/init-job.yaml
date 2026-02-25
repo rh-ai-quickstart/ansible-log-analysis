@@ -55,6 +55,39 @@ spec:
                 sleep 3
               done
               echo "Phoenix service is ready!"
+        - name: wait-for-loki
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Loki to be ready..."
+              until curl -f -s http://loki:3100/ready > /dev/null 2>&1; do
+                echo "Still waiting..."
+                sleep 5
+              done
+              echo "Loki is ready!"
+        - name: wait-for-alloy
+          image: quay.io/openshift/origin-cli:4.15
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Alloy deployment to be ready..."
+              until oc rollout status deployment/alloy --timeout=10s; do
+                echo "Still waiting..."
+                sleep 5
+              done
+              echo "Alloy is ready (AAP-Mock is also ready)!"
+        - name: wait-for-log-accumulation
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting 10 seconds for logs to accumulate..."
+              sleep 10
+              echo "Ready to start backend init pipeline!"
       containers:
         - name: init-pipeline
           {{- with .Values.securityContext }}

@@ -441,6 +441,29 @@ alloy:
   controller:
     type: deployment  # Changed from the default DaemonSet to Deployment (only need 1 pod for static file collection)
     replicas: 1
+
+    # Init container to wait for AAP Mock before starting Alloy
+    initContainers:
+      - name: wait-for-aap-mock
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        command:
+          - sh
+          - -c
+          - |
+            echo "Waiting for AAP Mock to be ready and have logs loaded..."
+            until curl -f -s http://alm-aap-mock:8080/healthz > /dev/null 2>&1; do
+              echo "Waiting for AAP Mock service..."
+              sleep 5
+            done
+            echo "AAP Mock is healthy, waiting for logs to be loaded..."
+            until [ $(curl -f -s http://alm-aap-mock:8080/api/v2/jobs/ | grep -o '"count":[0-9]*' | cut -d':' -f2) -gt 0 ] 2>/dev/null; do
+              echo "Waiting for sample logs to load..."
+              sleep 5
+            done
+            echo "Sample logs loaded! Waiting 10 seconds for logs to accumulate..."
+            sleep 10
+            echo "AAP Mock is ready with logs loaded! Starting Alloy..."
+
     volumes:
       extra:
         - name: ansible-logs
