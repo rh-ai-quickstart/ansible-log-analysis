@@ -142,14 +142,6 @@ install: namespace
 	@oc project $(NAMESPACE)
 	@helm install $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args)
 	@echo "✅ Helm install complete"
-	@echo ""
-	@echo "⏳ Waiting for aap-mock to be ready..."
-	@$(MAKE) -s wait-for-aap-mock
-	@echo ""
-	@echo "📂 Loading logs to aap-mock and starting replay..."
-	@$(MAKE) -s load-logs
-	@echo ""
-	@echo "🎉 Installation complete! Logs loaded and replay started."
 
 # Uninstall the deployment and clean up (NAMESPACE optional, defaults to current project)
 .PHONY: uninstall
