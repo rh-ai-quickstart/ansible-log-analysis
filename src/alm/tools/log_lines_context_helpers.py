@@ -14,7 +14,12 @@ from alm.agents.loki_agent.constants import (
     DIRECTION_BACKWARD,
     MAX_LOGS_PER_QUERY,
 )
-from alm.agents.loki_agent.schemas import LogToolOutput
+from alm.agents.loki_agent.schemas import (
+    LogToolOutput,
+    ToolStatus,
+    LightweightToolResponse,
+)
+from alm.tools.loki_tool_cache import _get_tool_result
 from alm.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -66,7 +71,6 @@ async def query_logs_in_time_window(
         - log_output: LogToolOutput with the fetched logs if successful
         - error_message: Error description if query fails or returns no logs, None otherwise
     """
-    from alm.agents.loki_agent.schemas import LogToolOutput, ToolStatus
     from alm.tools.loki_tools import get_logs_by_file_name
 
     context_query = {
@@ -77,8 +81,16 @@ async def query_logs_in_time_window(
         "direction": DIRECTION_BACKWARD,  # Get most recent logs in the window
     }
 
+    # Tool now returns lightweight response, need to get full result from cache
     context_result = await get_logs_by_file_name.ainvoke(context_query)
-    context_data = LogToolOutput.model_validate_json(context_result)
+    lightweight_response = LightweightToolResponse.model_validate_json(context_result)
+    context_data = _get_tool_result(lightweight_response.result_id)
+
+    # Handle cache miss
+    if context_data is None:
+        error_msg = f"Cache miss for result_id {lightweight_response.result_id} in query_logs_in_time_window"
+        logger.error(error_msg)
+        return None, error_msg
 
     if context_data.status != ToolStatus.SUCCESS.value or not context_data.logs:
         error_msg = f"Failed to retrieve context logs, Status: {context_data.status}, Logs: {context_data.logs}"

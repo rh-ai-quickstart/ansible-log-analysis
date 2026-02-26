@@ -20,6 +20,7 @@ from alm.agents.loki_agent.schemas.outputs import (
     LogToolOutput,
     LokiAgentOutput,
     IdentifyMissingDataSchema,
+    LightweightToolResponse,
 )
 from alm.models import LogLabels, LogEntry, DetectedLevel
 
@@ -42,4 +43,5 @@ __all__ = [
     "LogToolOutput",
     "LokiAgentOutput",
     "IdentifyMissingDataSchema",
+    "LightweightToolResponse",
 ]
