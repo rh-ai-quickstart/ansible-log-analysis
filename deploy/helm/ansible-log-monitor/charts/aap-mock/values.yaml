@@ -47,6 +47,24 @@ service:
   port: 8080
   targetPort: 8080
 
+# Health check probes
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 3
+
 # OpenShift Route configuration (recommended for OpenShift)
 route:
   enabled: true
