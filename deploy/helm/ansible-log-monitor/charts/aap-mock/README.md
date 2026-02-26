@@ -52,7 +52,7 @@ helm install aap-mock . -n my-namespace --create-namespace
 |-----------|-------------|---------|
 | `enabled` | Enable/disable aap-mock deployment | `true` |
 | `replicaCount` | Number of replicas | `1` |
-| `image.repository` | Container image repository | `quay.io/ecosystem-appeng/aap-mock` |
+| `image.repository` | Container image repository | `quay.io/rh-ai-quickstart/alm-aap-mock` |
 | `image.tag` | Container image tag | `latest` |
 | `persistence.data.enabled` | Enable data PVC for sample logs | `true` |
 | `persistence.data.size` | Data PVC size | `2Gi` |
@@ -185,7 +185,7 @@ kubectl exec -n alm-infra $POD -- truncate -s 0 /var/log/aap-mock/output.log
 ## Additional Resources
 
 - **Source Code**: https://github.com/RHEcosystemAppEng/aap-log-generator
-- **Container Images**: https://quay.io/repository/ecosystem-appeng/aap-mock
+- **Container Images**: https://quay.io/repository/rh-ai-quickstart/alm-aap-mock
 - **API Documentation**: https://github.com/RHEcosystemAppEng/aap-log-generator#api-endpoints
 - **Issues & Support**: https://github.com/RHEcosystemAppEng/aap-log-generator/issues
 

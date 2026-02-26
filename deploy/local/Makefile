@@ -1,4 +1,4 @@
-.PHONY: deploy start stop status help postgres phoenix loki-stack aap-mock replay stop-replay backend ui annotation health logs restart clean stop-postgres stop-phoenix stop-loki-stack stop-aap-mock embedding stop-embedding wait-for-embedding minio stop-minio rag stop-rag test-embedding test-rag
+.PHONY: deploy start stop status help postgres phoenix loki-stack aap-mock-stack replay stop-replay backend ui annotation health logs restart clean stop-postgres stop-phoenix stop-loki-stack stop-aap-mock-stack embedding stop-embedding wait-for-embedding minio stop-minio rag stop-rag test-embedding test-rag
 .DEFAULT_GOAL := help
 
 include ../../.env
@@ -36,7 +36,7 @@ start: stop ## 🚀 Start all services locally
 	@echo "   Waiting for PostgreSQL to be ready..."
 	@$(MAKE) -s phoenix
 	@$(MAKE) -s loki-stack
-	@$(MAKE) -s rag-stack & $(MAKE) -s aap-mock & wait
+	@$(MAKE) -s rag-stack & $(MAKE) -s aap-mock-stack & wait
 	@$(MAKE) -s backend
 	@$(MAKE) -s ui
 	@$(MAKE) -s annotation
@@ -94,23 +94,9 @@ prepare-logs: ## 📂 Flatten log files from data/logs/ into staging directory
 	FILE_COUNT=$$(ls -1 .staging/sample-logs/ 2>/dev/null | wc -l | tr -d ' '); \
 	echo "   ✅ $$FILE_COUNT log files prepared"
 
-aap-mock: prepare-logs ## 🎭 Start AAP Mock (Log Generator) and auto-start replay
+aap-mock-stack: ## 🎭 Start AAP Mock (Log Generator)
 	@echo "   Starting AAP Mock (Log Generator)..."
-	@$(COMPOSE_CMD) -f compose.yaml up -d aap-mock
-	@echo "   Waiting for AAP Mock to load 500 files and start server..."
-	@for i in $$(seq 1 90); do \
-		FILE_COUNT=$$(curl -s http://localhost:8082/api/auto-loaded 2>/dev/null | grep -o '"count":[0-9]*' | grep -o '[0-9]*' || echo ""); \
-		if [ -n "$$FILE_COUNT" ] && [ "$$FILE_COUNT" -gt 0 ] 2>/dev/null; then \
-			echo "   ✓ Server ready with $$FILE_COUNT files loaded!"; \
-			break; \
-		fi; \
-		if [ $$i -eq 90 ]; then \
-			echo "   ⚠️  Timeout (90s) - server may still be loading. Try 'make replay' later."; \
-		else \
-			echo "   ... loading files ($$i/90) - server not ready yet"; \
-			sleep 1; \
-		fi; \
-	done
+	@$(COMPOSE_CMD) -f compose.yaml up -d aap-mock aap-log-collector
 
 replay: ## 🔄 Start log replay on AAP Mock (loop mode)
 	@echo "   Starting log replay..."
@@ -142,7 +128,7 @@ annotation: ## 🏷️ Start Annotation UI (Gradio)
 stop: ## 🛑 Stop all services
 	@echo "🛑 Stopping all services..."
 	@echo "🔧 Using: $(COMPOSE_CMD)"
-	@$(MAKE) -s stop-aap-mock & \
+	@$(MAKE) -s stop-aap-mock-stack & \
 	$(MAKE) -s stop-loki-stack & \
 	$(MAKE) -s stop-postgres & \
 	$(MAKE) -s stop-phoenix & \
@@ -165,8 +151,8 @@ stop-loki-stack: ## 🛑 Stop Loki stack (Loki, Loki MCP Server, Grafana, Promta
 	@$(COMPOSE_CMD) -f compose.yaml down loki-mcp-server grafana promtail loki || true
 	@echo "   ✓ Loki stack stopped and removed"
 
-stop-aap-mock: ## 🛑 Stop AAP Mock
-	@$(COMPOSE_CMD) -f compose.yaml down aap-mock || true
+stop-aap-mock-stack: ## 🛑 Stop AAP Mock
+	@$(COMPOSE_CMD) -f compose.yaml down aap-mock aap-log-collector || true
 	@echo "   ✓ AAP Mock stopped and removed"
 
 stop-embedding: ## 🛑 Stop Embedding Service
@@ -272,6 +258,7 @@ status: ## 📊 Show status of all services
 	@echo "   📈 Grafana: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'grafana' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:3000"
 	@echo "   📝 Promtail: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'promtail' | grep -q 'Up' && echo 'Running' || echo 'Stopped')"
 	@echo "   🎭 AAP Mock: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'aap-mock' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:8082"
+	@echo "   🔍 AAP Log Collector: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'aap-log-collector' | grep -q 'Up' && echo 'Running' || echo 'Stopped')"
 	@if lsof -i :8000 >/dev/null 2>&1; then \
 		echo "   ⚙️  Backend API: Running - http://localhost:8000"; \
 	else \

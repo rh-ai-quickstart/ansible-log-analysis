@@ -219,3 +219,6 @@ data/*.pkl
 .vscode/
 *.secret
 .deepeval/
+
+# AAP Log Collector - Test logs
+test-logs/
