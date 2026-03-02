@@ -734,7 +734,7 @@ aap-mock:
       enabled: true
       size: 1Gi
     sampleLogs:
-      enabled: true
+      enabled: false
       size: 1Gi
   route:
     enabled: true

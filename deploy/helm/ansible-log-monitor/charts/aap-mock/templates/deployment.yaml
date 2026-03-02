@@ -51,8 +51,10 @@ spec:
               mountPath: /data
             - name: logs
               mountPath: /var/log/aap-mock
+            {{- if .Values.persistence.sampleLogs.enabled }}
             - name: sample-logs
               mountPath: /app/sample-logs
+            {{- end }}
           {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
             httpGet:
@@ -90,13 +92,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.persistence.sampleLogs.enabled }}
         - name: sample-logs
-          {{- if .Values.persistence.sampleLogs.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "aap-mock.fullname" . }}-sample-logs
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
