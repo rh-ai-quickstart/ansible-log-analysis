@@ -27,62 +27,56 @@ define check_namespace
 	@echo "Using namespace: $(NAMESPACE)"
 endef
 
-# Function to prompt for OpenAI credentials
+MODEL_VALUES_FILE := /tmp/rhdp-values.yaml
+
+# Prompt for OpenAI credentials (uses .env values if available, otherwise prompts)
 define prompt_openai_credentials
 	@bash -c '\
 	DEFAULT_TEMP="0.7"; \
-	NAMESPACE_VAR="$(NAMESPACE)"; \
 	echo "============================================"; \
-	echo "   LLM API Configuration Required"; \
+	echo "   LLM API Configuration"; \
 	echo "============================================"; \
 	echo ""; \
 	if [ -z "$(OPENAI_API_TOKEN)" ]; then \
 		echo -n "Enter LLM API TOKEN: "; \
-		read -s OPENAI_API_TOKEN_INPUT; \
+		read -s OPENAI_API_TOKEN; \
 		echo ""; \
-		export OPENAI_API_TOKEN="$$OPENAI_API_TOKEN_INPUT"; \
 	else \
 		echo "Using provided OPENAI_API_TOKEN from .env"; \
-		export OPENAI_API_TOKEN="$(OPENAI_API_TOKEN)"; \
+		OPENAI_API_TOKEN="$(OPENAI_API_TOKEN)"; \
 	fi; \
 	if [ -z "$(OPENAI_API_ENDPOINT)" ]; then \
 		echo -n "Enter LLM API ENDPOINT (include /v1 suffix): "; \
-		read OPENAI_API_ENDPOINT_INPUT; \
-		export OPENAI_API_ENDPOINT="$$OPENAI_API_ENDPOINT_INPUT"; \
+		read OPENAI_API_ENDPOINT; \
 	else \
 		echo "Using provided OPENAI_API_ENDPOINT from .env"; \
-		export OPENAI_API_ENDPOINT="$(OPENAI_API_ENDPOINT)"; \
+		OPENAI_API_ENDPOINT="$(OPENAI_API_ENDPOINT)"; \
 	fi; \
 	if [ -z "$(OPENAI_MODEL)" ]; then \
 		echo -n "Enter LLM MODEL NAME: "; \
-		read OPENAI_MODEL_INPUT; \
-		export OPENAI_MODEL="$$OPENAI_MODEL_INPUT"; \
+		read OPENAI_MODEL; \
 	else \
 		echo "Using provided OPENAI_MODEL from .env"; \
-		export OPENAI_MODEL="$(OPENAI_MODEL)"; \
+		OPENAI_MODEL="$(OPENAI_MODEL)"; \
 	fi; \
 	if [ -z "$(OPENAI_TEMPERATURE)" ]; then \
 		echo -n "Enter LLM TEMPERATURE [default: $$DEFAULT_TEMP]: "; \
-		read OPENAI_TEMPERATURE_INPUT; \
-		if [ -z "$$OPENAI_TEMPERATURE_INPUT" ]; then \
-			export OPENAI_TEMPERATURE="$$DEFAULT_TEMP"; \
-		else \
-			export OPENAI_TEMPERATURE="$$OPENAI_TEMPERATURE_INPUT"; \
+		read OPENAI_TEMPERATURE; \
+		if [ -z "$$OPENAI_TEMPERATURE" ]; then \
+			OPENAI_TEMPERATURE="$$DEFAULT_TEMP"; \
 		fi; \
 	else \
 		echo "Using provided OPENAI_TEMPERATURE from .env"; \
-		export OPENAI_TEMPERATURE="$(OPENAI_TEMPERATURE)"; \
+		OPENAI_TEMPERATURE="$(OPENAI_TEMPERATURE)"; \
 	fi; \
 	echo ""; \
-	echo "Creating Kubernetes secret '\''model-secret'\''..."; \
-	oc create secret generic model-secret \
-		--from-literal=OPENAI_API_TOKEN=$$OPENAI_API_TOKEN \
-		--from-literal=OPENAI_API_ENDPOINT=$$OPENAI_API_ENDPOINT \
-		--from-literal=OPENAI_MODEL=$$OPENAI_MODEL \
-		--from-literal=OPENAI_TEMPERATURE=$$OPENAI_TEMPERATURE \
-		-n "$$NAMESPACE_VAR" --dry-run=client -o yaml | oc apply -f -; \
-	echo "Secret '\''model-secret'\'' created successfully"; \
-	echo ""'
+	echo "backend:" > $(MODEL_VALUES_FILE); \
+	echo "  secret:" >> $(MODEL_VALUES_FILE); \
+	echo "    OPENAI_API_TOKEN: \"$$OPENAI_API_TOKEN\"" >> $(MODEL_VALUES_FILE); \
+	echo "    OPENAI_API_ENDPOINT: \"$$OPENAI_API_ENDPOINT\"" >> $(MODEL_VALUES_FILE); \
+	echo "    OPENAI_MODEL: \"$$OPENAI_MODEL\"" >> $(MODEL_VALUES_FILE); \
+	echo "    OPENAI_TEMPERATURE: \"$$OPENAI_TEMPERATURE\"" >> $(MODEL_VALUES_FILE); \
+	echo "LLM configuration ready"'
 endef
 
 env_args = \
@@ -97,7 +91,7 @@ help:
 	@echo ""
 	@echo "Available Commands:"
 	@echo "  install                    Deploy the application (prompts for OpenAI credentials)"
-	@echo "  upgrade                    Upgrade the application (prompts for OpenAI credentials)"
+	@echo "  upgrade                    Upgrade the application"
 	@echo "  uninstall                  Remove the application"
 	@echo "  namespace                  Create/switch to namespace"
 	@echo "  port-forward-ui           Forward UI service to localhost:7860"
@@ -108,20 +102,19 @@ help:
 	@echo "Usage Examples:"
 	@echo "  make install                              # Will prompt for credentials"
 	@echo "  make install NAMESPACE=ansible-logs      # Will prompt for credentials"
-	@echo "  make upgrade                              # Will prompt for credentials"
+	@echo "  make upgrade"
 	@echo "  make uninstall"
 	@echo "  make port-forward-ui"
 	@echo ""
 	@echo "Configuration Variables:"
 	@echo "  NAMESPACE                  OpenShift namespace (default: current project)"
 	@echo "  OPENAI_API_TOKEN          API Token (will prompt if not provided)"
-	@echo "  OPENAI_API_ENDPOINT       AI API endpoint (will prompt if not provided, defaults to llama-4-scout)"
-	@echo "  OPENAI_MODEL              AI model to use (will prompt if not provided, default: llama-4-scout-17b-16e-w4a16)"
+	@echo "  OPENAI_API_ENDPOINT       AI API endpoint (will prompt if not provided)"
+	@echo "  OPENAI_MODEL              AI model to use (will prompt if not provided)"
 	@echo "  OPENAI_TEMPERATURE        AI temperature setting (will prompt if not provided, default: 0.7)"
 	@echo ""
 	@echo "Note: All commands use the current OpenShift project by default."
 	@echo "      Use NAMESPACE=your-namespace to override."
-	@echo "      The install/upgrade commands will create a 'model-secret' with OpenAI configuration."
 
 
 
@@ -140,7 +133,8 @@ install: namespace
 	$(call prompt_openai_credentials)
 	@echo "🚀 Installing Ansible Log Monitor in namespace $(NAMESPACE)..."
 	@oc project $(NAMESPACE)
-	@helm install $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args)
+	@helm install $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args) -f $(MODEL_VALUES_FILE)
+	@rm -f $(MODEL_VALUES_FILE)
 	@echo "✅ Helm install complete"
 
 # Uninstall the deployment and clean up (NAMESPACE optional, defaults to current project)
@@ -149,8 +143,6 @@ uninstall:
 	$(call check_namespace)
 	@echo "Uninstalling Ansible Log Monitor from namespace $(NAMESPACE)..."
 	@helm uninstall $(ANSIBLE_LOG_MONITOR_CHART) -n $(NAMESPACE)
-	@echo "Removing model-secret if it exists..."
-	@oc delete secret model-secret -n $(NAMESPACE) --ignore-not-found
 	@echo "Removing all PVCs..."
 	@oc delete pvc --all -n $(NAMESPACE) 2>/dev/null || true
 	@echo "✅ Ansible Log Monitor uninstalled completely (all data removed)"

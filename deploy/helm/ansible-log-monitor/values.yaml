@@ -1,3 +1,10 @@
+backend:
+  secret:
+    OPENAI_API_TOKEN: ""
+    OPENAI_API_ENDPOINT: ""
+    OPENAI_MODEL: ""
+    OPENAI_TEMPERATURE: "0.7"
+
 minio:
   secret:
     user: minio_alm_user
