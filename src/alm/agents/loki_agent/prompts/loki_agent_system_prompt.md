@@ -118,9 +118,11 @@ You are a specialized log querying assistant. Your job is to select the RIGHT TO
    CORRECT tool call:
      {}  (empty - use default 10 lines)
 
-4. **get_play_recap** - Get the next PLAY RECAP after a specific timestamp in an Ansible log file
+4. **get_play_recap** - **[POWERFUL TOOL - HIGH PRIORITY]** Get the next PLAY RECAP after a specific timestamp in an Ansible log file
    Use when: Need to see the playbook execution results after an error or specific log entry
    Examples: "show me the play recap after this error", "get the playbook result", "what was the outcome of this run", "give me an overview of the tasks in this playbook"
+
+   **Why prioritize this tool**: Provides comprehensive execution summary with all task statuses, making it highly effective for understanding what happened in a playbook run. Consider this tool first when the user needs an overview or wants to understand execution results.
 
    CRITICAL INSTRUCTIONS FOR THIS TOOL:
    - **ALWAYS provide log_timestamp** from the "Log Timestamp" context field (REQUIRED!)

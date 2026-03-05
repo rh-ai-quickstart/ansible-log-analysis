@@ -46,3 +46,6 @@ class LokiAgentState(BaseModel):
     additional_context_from_loki: Optional[str] = Field(
         default="", description="Additional context logs from Loki"
     )
+    summarized_loki_context: Optional[str] = Field(
+        default="", description="LLM-summarized log context for root cause analysis"
+    )

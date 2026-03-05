@@ -84,6 +84,14 @@ class IdentifyMissingDataSchema(BaseModel):
     )
 
 
+class LogSummarizationSchema(BaseModel):
+    """Schema for LLM-based log summarization output"""
+
+    summarized_context: str = Field(
+        description="Summarized and refined log context focusing on information relevant for root cause analysis"
+    )
+
+
 # Helper functions for log context building
 
 

@@ -42,9 +42,17 @@ async def loki_sub_agent(state: ContextAgentState):
     )
     loki_result = await loki_agent_graph.ainvoke(loki_state)
     loki_result_state = LokiAgentState.model_validate(loki_result)
+
+    # Use summarized context if available, fallback to raw context
+    loki_context = (
+        loki_result_state.summarized_loki_context
+        if loki_result_state.summarized_loki_context
+        else loki_result_state.additional_context_from_loki
+    )
+
     return Command(
         goto=END,
-        update={"loki_context": loki_result_state.additional_context_from_loki},
+        update={"loki_context": loki_context},
     )
 
 
