@@ -15,6 +15,9 @@ LOKI_AGENT_SYSTEM_PROMPT_PATH = (
 IDENTIFY_MISSING_DATA_PROMPT_PATH = (
     "src/alm/agents/loki_agent/prompts/identify_missing_data.md"
 )
+SUMMARIZE_LOKI_LOGS_PROMPT_PATH = (
+    "src/alm/agents/loki_agent/prompts/summarize_loki_logs.md"
+)
 
 
 # ==============================================================================

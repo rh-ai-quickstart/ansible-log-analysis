@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 
 from alm.agents.loki_agent.state import LokiAgentState
-from alm.agents.loki_agent.nodes import identify_missing_data
+from alm.agents.loki_agent.nodes import identify_missing_data, summarize_loki_logs
 from alm.agents.loki_agent.agent import create_loki_agent
 from alm.agents.loki_agent.schemas import LogToolOutput, LokiAgentOutput, ToolStatus
 from alm.llm import get_llm
@@ -50,7 +50,7 @@ async def identify_missing_log_data_node(
 
 async def loki_execute_query_node(
     state: LokiAgentState,
-) -> Command[Literal[END]]:
+) -> Command[Literal["summarize_loki_context_node", END]]:
     """
     Node that executes the Loki query using the ToolCallingAgent.
 
@@ -105,7 +105,7 @@ async def loki_execute_query_node(
             additional_context = old_loki_context + "\n\n" + additional_context
 
         return Command(
-            goto=END,
+            goto="summarize_loki_context_node",
             update={
                 "loki_query_result": result.model_dump(),
                 "additional_context_from_loki": additional_context,
@@ -115,6 +115,7 @@ async def loki_execute_query_node(
     except Exception as e:
         logger.error("Exception in loki_execute_query_node: %s", e)
         logger.warning("Continuing without Loki context due to error.")
+        # No point in trying to summarize when there's no log context at all
         return Command(
             goto=END,
             update={
@@ -136,12 +137,63 @@ async def loki_execute_query_node(
         )
 
 
+async def summarize_loki_context_node(
+    state: LokiAgentState,
+) -> Command[Literal[END]]:
+    """
+    Node that summarizes the retrieved log context using an LLM.
+
+    This node takes the raw log context retrieved from Loki and creates a refined,
+    focused summary that preserves critical details while reducing verbosity.
+    The summarized context is optimized for root cause analysis.
+    """
+    try:
+        # Get the raw log context from state
+        raw_log_context = state.additional_context_from_loki
+
+        # Only summarize if we have context to summarize
+        if not raw_log_context:
+            logger.info("No log context to summarize, skipping summarization")
+            return Command(goto=END, update={"summarized_loki_context": ""})
+
+        # Extract necessary context for summarization
+        log_summary = state.log_summary
+        expert_classification = state.expert_classification
+        log_timestamp = state.log_entry.log_labels.database_timestamp.isoformat()
+        log_labels = state.log_entry.log_labels
+
+        # Get LLM instance
+        llm = get_llm()
+
+        # Perform summarization
+        summarized_context = await summarize_loki_logs(
+            log_summary=log_summary,
+            expert_classification=expert_classification,
+            log_labels=log_labels,
+            log_timestamp=log_timestamp,
+            raw_log_context=raw_log_context,
+            llm=llm,
+        )
+
+        logger.info("Successfully summarized Loki log context")
+
+        return Command(goto=END, update={"summarized_loki_context": summarized_context})
+
+    except Exception as e:
+        logger.error("Exception in summarize_loki_context_node: %s", e)
+        logger.warning(
+            "Node-level error during summarization - returning empty string. Downstream will use raw context as fallback."
+        )
+        # Return empty string - downstream has fallback to raw context
+        return Command(goto=END, update={"summarized_loki_context": ""})
+
+
 def build_loki_agent_graph():
     """
     Build the Loki agent subgraph.
 
     Graph flow:
-    START → identify_missing_log_data_node → loki_execute_query_node → END
+    START → identify_missing_log_data_node → loki_execute_query_node → summarize_loki_context_node → END
     """
     builder = StateGraph(LokiAgentState)
 
@@ -149,6 +201,7 @@ def build_loki_agent_graph():
     builder.add_edge(START, "identify_missing_log_data_node")
     builder.add_node("identify_missing_log_data_node", identify_missing_log_data_node)
     builder.add_node("loki_execute_query_node", loki_execute_query_node)
+    builder.add_node("summarize_loki_context_node", summarize_loki_context_node)
 
     return builder.compile()
 
