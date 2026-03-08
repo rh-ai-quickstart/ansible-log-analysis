@@ -54,7 +54,7 @@ async def suggest_step_by_step_solution_node(
     context = state.contextForStepByStepSolution
     try:
         step_by_step_solution = await suggest_step_by_step_solution(
-            log_summary, log, llm, context
+            log_summary, log, llm, context, streaming=True
         )
     except Exception as e:
         logger.error("Exception in suggest_step_by_step_solution_node: %s", e)
