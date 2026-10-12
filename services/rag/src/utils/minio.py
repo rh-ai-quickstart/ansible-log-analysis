@@ -1,6 +1,10 @@
 """
-Standalone MinIO utilities for RAG service.
+Standalone object storage utilities for RAG service.
 No dependencies on backend (alm.*) code.
+
+Backed by aws-compatible-storage (S4), which exposes an S3 API on port 7480.
+The minio-py client is kept because it speaks plain S3 - only the endpoint and
+credentials changed, so the MINIO_* variable names are retained for continuity.
 """
 
 import os
@@ -15,35 +19,35 @@ def get_minio_client(
     minio_secret_key: Optional[str] = None,
 ) -> Minio:
     """
-    Get a MinIO client with configuration from parameters, env vars, or defaults.
+    Get an S3 client with configuration from parameters, env vars, or defaults.
 
     Configuration priority:
     1. Function parameters (if provided)
     2. Environment variables (MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
-    3. Defaults (localhost:9000, minioadmin/minioadmin) - only for local development outside Docker
+    3. Defaults (localhost:7480, s4admin/s4secret) - only for local development outside Podman
 
     Args:
-        minio_endpoint: MinIO endpoint (overrides env/default)
-        minio_port: MinIO port (overrides env/default)
-        minio_access_key: MinIO access key (overrides env/default)
-        minio_secret_key: MinIO secret key (overrides env/default)
+        minio_endpoint: Object storage host (overrides env/default)
+        minio_port: S3 API port (overrides env/default)
+        minio_access_key: S3 access key (overrides env/default)
+        minio_secret_key: S3 secret key (overrides env/default)
 
     Returns:
-        MinIO client instance
+        S3 client instance
 
     Raises:
-        ValueError: If required MinIO configuration is missing
+        ValueError: If required object storage configuration is missing
     """
     # Priority: function param > env var > default
-    # Defaults only used for local development outside Docker
+    # Defaults only used for local development outside Podman
     endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT", "localhost")
-    port = minio_port or os.getenv("MINIO_PORT", "9000")
-    access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-    secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY", "minioadmin")
+    port = minio_port or os.getenv("MINIO_PORT", "7480")
+    access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY", "s4admin")
+    secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY", "s4secret")
 
     if not all([endpoint, port, access_key, secret_key]):
         raise ValueError(
-            "Missing required MinIO environment variables: "
+            "Missing required object storage environment variables: "
             "MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY"
         )
 
@@ -57,10 +61,10 @@ def get_minio_client(
 
 def ensure_bucket_exists(minio_client: Minio, bucket_name: str) -> bool:
     """
-    Ensure a MinIO bucket exists, creating it if necessary.
+    Ensure a bucket exists, creating it if necessary.
 
     Args:
-        minio_client: MinIO client instance
+        minio_client: S3 client instance
         bucket_name: Name of the bucket to ensure exists
 
     Returns:

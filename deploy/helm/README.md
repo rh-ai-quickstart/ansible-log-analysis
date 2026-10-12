@@ -14,7 +14,7 @@ The Ansible Log Monitor stack includes the following components:
 - **AAP Mock** - Mock Ansible Automation Platform log generator (for testing)
 - **Loki Stack** - Log aggregation (Loki + Alloy/Promtail + Grafana)
 - **PostgreSQL** (pgvector) - Database for storing processed alerts
-- **MinIO** - Object storage for artifacts
+- **aws-compatible-storage** (S4) - S3-compatible object storage for artifacts and Loki chunks
 - **MCP Servers** - Model Context Protocol servers (Loki integration)
 - **Phoenix** - Observability and tracing
 
@@ -164,9 +164,51 @@ make install
 - **ui** - Gradio UI (`charts/ui/README.md`)
 - **annotation-interface** - Annotation tool (`charts/annotation-interface/README.md`)
 - **pgvector** - PostgreSQL database
-- **minio** - Object storage
+- **aws-compatible-storage** - S3-compatible object storage (S4)
 - **mcp-servers** - MCP protocol servers
 - **phoenix** - Observability platform
+
+### Object Storage (aws-compatible-storage / S4)
+
+Object storage is provided by the shared
+[`aws-compatible-storage`](https://github.com/rh-ai-quickstart/ai-architecture-charts/tree/main/aws-compatible-storage)
+chart from ai-architecture-charts, which packages
+[S4](https://github.com/rh-aiservices-bu/s4) (Ceph RGW + web UI). It replaces the
+MinIO subchart that earlier releases used, and also backs Loki's chunk store.
+
+| Item | Value |
+|------|-------|
+| In-cluster S3 endpoint | `http://aws-compatible-storage:7480` |
+| Web UI (Route) | Route `aws-compatible-storage`, service port `5000` |
+| Health endpoint | `http://aws-compatible-storage:5000/api` (there is no `/minio/health/*`) |
+| Credentials Secret | `aws-compatible-storage-credentials` → `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
+| S3 API Route | Disabled (`route.s3Api.enabled: false`) - all consumers are in-cluster |
+| Data PVC | `aws-compatible-storage-data` (10Gi) |
+
+Buckets are **not** created by the subchart. The parent chart runs a regular Job,
+`<release>-object-storage-buckets`, which waits for the S3 API, creates each bucket
+in `awsCompatibleStorageBuckets.names` idempotently, and runs a read/write smoke
+test. It is deliberately a regular Job rather than a `post-install` hook, because
+Helm runs `--wait` *before* hooks and both Loki and the RAG init job block until
+their buckets exist.
+
+| Bucket | Used by |
+|--------|---------|
+| `rag-index` | RAG FAISS index, metadata, `LATEST.json` |
+| `clustering-model` | `clustering_model.joblib` |
+| `loki-chunks` / `loki-ruler` / `loki-admin` | Loki |
+
+Application services still use `MINIO_*` environment variable names — the app talks
+plain S3 through the `minio-py` client, so only the endpoint and credentials changed.
+
+> **Credentials:** `values.yaml` ships demo credentials (`s4admin` / `s4secret`, UI
+> `admin` / `alm_password`). Override them with a secrets overlay
+> (`helm install ... -f secrets.yaml`) for anything beyond a throwaway namespace.
+> `aws-compatible-storage.s3.*` and `loki.loki.storage.s3.*` must stay in sync.
+
+To point at a different service name, change `aws-compatible-storage.fullnameOverride`
+**and** `global.objectStorage.host` in `values.yaml`, plus the literal endpoint in
+`charts/{backend,clustering,rag}/values.yaml` and `loki.loki.storage.s3.endpoint`.
 
 ## Log Collection
 

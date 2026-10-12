@@ -77,7 +77,7 @@ class QueryResponse(BaseModel):
 
 
 async def load_index():
-    """Load index from MinIO. Returns True if successful, False otherwise."""
+    """Load index from object storage. Returns True if successful, False otherwise."""
     global index_loader
 
     model_name = os.getenv("RAG_MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
@@ -371,7 +371,7 @@ async def query_rag(request: QueryRequest):
 @app.post("/rag/reload")
 async def reload_index():
     """
-    Reload the index from MinIO.
+    Reload the index from object storage.
 
     Useful for updating the index without restarting the service.
     """

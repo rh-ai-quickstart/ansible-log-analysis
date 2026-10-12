@@ -153,26 +153,23 @@ env:
       secretKeyRef:
         name: pgvector
         key: uri
+  # Object storage: aws-compatible-storage (S4). S3 API on :7480.
+  # The MINIO_* names are kept because the app talks S3 through the minio-py client;
+  # only the endpoint and credential source changed.
   - name: MINIO_ENDPOINT
-    valueFrom:
-      secretKeyRef:
-        name: minio
-        key: host
+    value: "aws-compatible-storage"
+  - name: MINIO_PORT
+    value: "7480"
   - name: MINIO_ACCESS_KEY
     valueFrom:
       secretKeyRef:
-        name: minio
-        key: user
+        name: aws-compatible-storage-credentials
+        key: AWS_ACCESS_KEY_ID
   - name: MINIO_SECRET_KEY
     valueFrom:
       secretKeyRef:
-        name: minio
-        key: password
-  - name: MINIO_PORT
-    valueFrom:
-      secretKeyRef:
-        name: minio
-        key: port
+        name: aws-compatible-storage-credentials
+        key: AWS_SECRET_ACCESS_KEY
   - name: LOKI_URL
     value: "http://loki:3100"
 

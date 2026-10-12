@@ -1,5 +1,5 @@
 """
-Load RAG index from MinIO (FAISS index and metadata).
+Load RAG index from object storage (FAISS index and metadata).
 """
 
 import os
@@ -16,7 +16,7 @@ from minio import Minio
 
 class RAGIndexLoader:
     """
-    Loads FAISS index and metadata from MinIO.
+    Loads FAISS index and metadata from object storage.
     Uses temp files for FAISS compatibility (FAISS prefers file paths).
     """
 
@@ -33,22 +33,22 @@ class RAGIndexLoader:
         Initialize the index loader.
 
         Args:
-            minio_endpoint: MinIO endpoint (from env if not provided)
-            minio_port: MinIO port (from env if not provided)
-            minio_access_key: MinIO access key (from env if not provided)
-            minio_secret_key: MinIO secret key (from env if not provided)
-            bucket_name: MinIO bucket name (default: "rag-index")
+            minio_endpoint: object storage host (from env if not provided)
+            minio_port: S3 API port (from env if not provided)
+            minio_access_key: S3 access key (from env if not provided)
+            minio_secret_key: S3 secret key (from env if not provided)
+            bucket_name: object storage bucket name (default: "rag-index")
             model_name: Name of the embedding model (for validation)
         """
-        # Get MinIO config from environment
+        # Get object storage config from environment
         endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT")
-        port = minio_port or os.getenv("MINIO_PORT", "9000")
+        port = minio_port or os.getenv("MINIO_PORT", "7480")
         access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY")
         secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY")
 
         if not all([endpoint, port, access_key, secret_key]):
             raise ValueError(
-                "Missing required MinIO environment variables: "
+                "Missing required object storage environment variables: "
                 "MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY"
             )
 
@@ -92,12 +92,12 @@ class RAGIndexLoader:
         Synchronous implementation of load_index.
         This method contains all the blocking I/O operations.
         """
-        print("Loading RAG index from MinIO...")
+        print("Loading RAG index from object storage...")
 
         # Check if bucket exists
         if not self.minio_client.bucket_exists(self.bucket_name):
             raise ValueError(
-                f"MinIO bucket '{self.bucket_name}' does not exist. "
+                f"object storage bucket '{self.bucket_name}' does not exist. "
                 "Run init job first to create the index."
             )
 
@@ -134,7 +134,7 @@ class RAGIndexLoader:
             if isinstance(e, ValueError):
                 raise
             raise ValueError(
-                f"Could not read LATEST.json from MinIO: {e}. "
+                f"Could not read LATEST.json from object storage: {e}. "
                 "Run init job first to create the index."
             )
 
@@ -153,7 +153,7 @@ class RAGIndexLoader:
                 print("Downloaded FAISS index to temp file")
             except Exception as e:
                 raise ValueError(
-                    f"Could not download index.faiss from MinIO: {e}. "
+                    f"Could not download index.faiss from object storage: {e}. "
                     "Run init job first to create the index."
                 )
 
@@ -172,7 +172,7 @@ class RAGIndexLoader:
                 print("Downloaded metadata to temp file")
             except Exception as e:
                 raise ValueError(
-                    f"Could not download metadata.pkl from MinIO: {e}. "
+                    f"Could not download metadata.pkl from object storage: {e}. "
                     "Run init job first to create the index."
                 )
 
@@ -212,7 +212,7 @@ class RAGIndexLoader:
         self,
     ) -> Tuple[faiss.Index, Dict[str, Dict[str, Any]], Dict[int, str]]:
         """
-        Load FAISS index and metadata from MinIO.
+        Load FAISS index and metadata from object storage.
 
         Uses temp files for FAISS compatibility (FAISS prefers file paths).
         Blocking I/O operations are run in a thread pool to avoid blocking the event loop.
@@ -230,7 +230,7 @@ class RAGIndexLoader:
         return await asyncio.to_thread(self._load_index_sync)
 
     async def reload_index(self):
-        """Force reload of index from MinIO."""
+        """Force reload of index from object storage."""
         self._loaded = False
         self.index = None
         self.error_store = {}

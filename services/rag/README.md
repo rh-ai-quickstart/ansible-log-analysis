@@ -4,9 +4,9 @@ FastAPI microservice for RAG (Retrieval-Augmented Generation) queries.
 
 ## Overview
 
-The RAG service provides similarity search over the knowledge base embeddings stored in MinIO. It:
+The RAG service provides similarity search over the knowledge base embeddings stored in object storage. It:
 
-1. **Loads index from MinIO** - loads FAISS index and metadata from MinIO using temp files
+1. **Loads index from object storage** - loads FAISS index and metadata from object storage using temp files
 2. **Exposes REST API** - provides query endpoints for knowledge base retrieval
 3. **Graceful startup** - starts successfully even if index doesn't exist yet (local deployment)
 4. **Auto-loading** - automatically loads index when it becomes available (local deployment)
@@ -15,8 +15,8 @@ The RAG service provides similarity search over the knowledge base embeddings st
 
 - **Graceful startup**: Service starts successfully even if index is not ready (local deployment)
 - **Background polling**: Automatically polls for index every 20 seconds if not found at startup (local deployment)
-- **Fast loading**: Loads pre-built FAISS index from MinIO (no rebuilding needed)
-- **MinIO-based**: Artifacts stored in MinIO (index.faiss, metadata.pkl, LATEST.json)
+- **Fast loading**: Loads pre-built FAISS index from object storage (no rebuilding needed)
+- **Object-storage-based**: Artifacts stored in S3 (index.faiss, metadata.pkl, LATEST.json)
 - **Kubernetes support**: Uses initContainer to ensure index is ready before service starts (Kubernetes deployment)
 
 ## API Endpoints
@@ -102,15 +102,18 @@ Readiness check - ensures index is loaded. Returns 503 if index not ready, 200 w
 
 ### `POST /rag/reload`
 
-Reload the index from MinIO without restarting the service.
+Reload the index from object storage without restarting the service.
 
 ## Environment Variables
 
-- `MINIO_ENDPOINT` - MinIO endpoint (required)
-- `MINIO_PORT` - MinIO port (default: `9000`)
-- `MINIO_ACCESS_KEY` - MinIO access key (required)
-- `MINIO_SECRET_KEY` - MinIO secret key (required)
-- `RAG_BUCKET_NAME` - MinIO bucket name (default: `rag-index`)
+Object storage is [aws-compatible-storage](https://github.com/rh-ai-quickstart/ai-architecture-charts/tree/main/aws-compatible-storage) (S4).
+The `MINIO_*` names are retained because the service talks plain S3 through the `minio-py` client.
+
+- `MINIO_ENDPOINT` - object storage host (required, e.g. `aws-compatible-storage`)
+- `MINIO_PORT` - S3 API port (default: `7480`)
+- `MINIO_ACCESS_KEY` - S3 access key (required, from `aws-compatible-storage-credentials`)
+- `MINIO_SECRET_KEY` - S3 secret key (required, from `aws-compatible-storage-credentials`)
+- `RAG_BUCKET_NAME` - bucket name (default: `rag-index`)
 - `EMBEDDINGS_LLM_URL` - URL of the embedding service (default: `http://alm-embedding:8080`)
 - `RAG_MODEL_NAME` - Name of the embedding model (default: `nomic-ai/nomic-embed-text-v1.5`)
 - `PORT` - Service port (default: `8002`)
@@ -121,7 +124,7 @@ Reload the index from MinIO without restarting the service.
 
 For local development, the service uses **graceful startup with background polling**:
 
-1. **Service starts** → Tries to load index from MinIO
+1. **Service starts** → Tries to load index from object storage
 2. **If index not found** → Service starts successfully anyway, begins background polling
 3. **Background polling** → Checks for index every 20 seconds
 4. **Index detected** → Automatically loads index when it becomes available
@@ -136,8 +139,8 @@ This design allows the service to start before the index is created (e.g., befor
 
 For Kubernetes deployment, the service uses an **initContainer** to ensure the index is ready before the main container starts:
 
-1. **InitContainer starts** → Waits for `LATEST.json` with `status: "READY"` in MinIO
-2. **Main container starts** → Loads index from MinIO once at startup
+1. **InitContainer starts** → Waits for `LATEST.json` with `status: "READY"` in object storage
+2. **Main container starts** → Loads index from object storage once at startup
 3. **Service ready** → `/ready` endpoint returns 200
 4. **Service state**:
    - `/health` returns service status
@@ -150,33 +153,33 @@ This design ensures deterministic startup - the service only starts when the ind
 The service is deployed as a Kubernetes deployment via Helm chart.
 
 **Prerequisites:**
-- MinIO/S3 accessible
-- RAG index artifacts in MinIO bucket (created by init job):
+- aws-compatible-storage (S4) S3 API reachable on port 7480
+- RAG index artifacts in the bucket (created by init job):
   - `index.faiss` - FAISS index
   - `metadata.pkl` - Error metadata
   - `LATEST.json` - Status pointer (status: READY)
 
 **Startup Sequence (Kubernetes):**
 1. RAG service pod starts
-2. InitContainer waits for RAG index in MinIO (checks LATEST.json status=READY)
-3. Main container starts and loads index from MinIO once
+2. InitContainer waits for RAG index in object storage (checks LATEST.json status=READY)
+3. Main container starts and loads index from object storage once
 4. Service becomes ready for queries
 
 **Startup Sequence (Local):**
 1. RAG service container starts
-2. Service tries to load index from MinIO
+2. Service tries to load index from object storage
 3. If index not found, service starts successfully and begins polling every 20 seconds
 4. When index is created (e.g., via `make local/train`), service automatically loads it
 5. Service becomes ready for queries
 
 ## Dependencies
 
-- **MinIO/S3** with RAG index artifacts (via init job)
+- **aws-compatible-storage (S4)** with RAG index artifacts (via init job)
   - `index.faiss` - FAISS index file
   - `metadata.pkl` - Error metadata
   - `LATEST.json` - Status pointer file
 - **Embedding service (TEI)** - for generating query embeddings
 - **FAISS** - for in-memory similarity search
 - **FastAPI** - web framework
-- **minio** - MinIO client library
+- **minio** - S3 client library (minio-py)
 

@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 def setup_rag_directories():
     """
     Setup RAG data directory structure.
-    Creates the directory needed for temporary index storage before uploading to MinIO.
+    Creates the directory needed for temporary index storage before uploading to object storage.
     """
     from utils.config import config
 
@@ -55,8 +55,8 @@ def setup_rag_directories():
 
 async def build_rag_index():
     """
-    Build RAG index from knowledge base PDFs and save to MinIO.
-    This runs during the RAG init job to create the FAISS index and save artifacts to MinIO.
+    Build RAG index from knowledge base PDFs and save to object storage.
+    This runs during the RAG init job to create the FAISS index and save artifacts to object storage.
     """
     from utils.config import config
     from rag.ingest_and_chunk import AnsibleErrorParser
@@ -72,27 +72,27 @@ async def build_rag_index():
         )
         return
 
-    # Check if index already exists in MinIO (skip rebuild for faster upgrades)
+    # Check if index already exists in object storage (skip rebuild for faster upgrades)
     bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
     try:
         if check_rag_index_exists(bucket_name):
             status = get_rag_index_status(bucket_name)
             total_errors = status.get("total_errors", 0) if status else 0
             logger.info(
-                f"✓ Found existing RAG index in MinIO (status: READY, {total_errors} errors), skipping rebuild"
+                f"✓ Found existing RAG index in object storage (status: READY, {total_errors} errors), skipping rebuild"
             )
             logger.info(
-                "  To force rebuild, delete index from MinIO or set RAG_FORCE_REBUILD=true"
+                "  To force rebuild, delete index from object storage or set RAG_FORCE_REBUILD=true"
             )
             if os.getenv("RAG_FORCE_REBUILD", "false").lower() != "true":
                 return
     except Exception as e:
-        logger.warning(f"⚠ Could not check MinIO: {e}")
+        logger.warning(f"⚠ Could not check object storage: {e}")
         logger.info("  Proceeding with index build...")
 
     logger.info("\n" + "=" * 70)
     logger.info("BUILDING RAG INDEX FROM KNOWLEDGE BASE")
-    logger.info("  Storage: MinIO")
+    logger.info("  Storage: aws-compatible-storage (S4)")
     logger.info("=" * 70)
 
     try:
@@ -139,10 +139,10 @@ async def build_rag_index():
         logger.info(f"TOTAL: {len(all_chunks)} chunks from {len(pdf_files)} PDFs")
         logger.info(f"{'=' * 70}")
 
-        # Build and save index to MinIO
+        # Build and save index to object storage
         await embedder.ingest_and_index_to_minio(all_chunks)
         logger.info("\n" + "=" * 70)
-        logger.info("✓ RAG INDEX BUILD COMPLETE (MinIO)")
+        logger.info("✓ RAG INDEX BUILD COMPLETE (object storage)")
         logger.info("=" * 70)
 
     except Exception as e:
@@ -162,12 +162,12 @@ async def main():
     # Step 1: Setup RAG data directories (create /app/data/rag)
     setup_rag_directories()
 
-    # Step 2: Build RAG index and save to MinIO
+    # Step 2: Build RAG index and save to object storage
     await build_rag_index()
 
     logger.info("\n" + "=" * 70)
     logger.info("✓ RAG INITIALIZATION COMPLETE")
-    logger.info("  Index saved to MinIO - RAG service will load it on startup")
+    logger.info("  Index saved to object storage - RAG service will load it on startup")
     logger.info("=" * 70)
 
 

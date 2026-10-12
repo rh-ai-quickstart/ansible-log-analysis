@@ -1,4 +1,4 @@
-.PHONY: deploy start stop status help postgres phoenix loki-stack aap-mock-stack replay stop-replay backend ui annotation health logs restart clean stop-postgres stop-phoenix stop-loki-stack stop-aap-mock-stack embedding stop-embedding wait-for-embedding minio stop-minio rag stop-rag test-embedding test-rag
+.PHONY: deploy start stop status help postgres phoenix loki-stack aap-mock-stack replay stop-replay backend ui annotation health logs restart clean stop-postgres stop-phoenix stop-loki-stack stop-aap-mock-stack embedding stop-embedding wait-for-embedding stop-s4 rag stop-rag test-embedding test-rag
 .DEFAULT_GOAL := help
 
 include ../../.env
@@ -23,8 +23,8 @@ help: ## Show this help message
 	@echo "📚 RAG Setup:"
 	@echo "  1. Place PDF files in data/knowledge_base/"
 	@echo "  2. Start services: 'make start' (includes RAG service)"
-	@echo "  3. Run 'make run-whole-training-pipeline' to build RAG index and save to MinIO"
-	@echo "  4. RAG service will automatically load index from MinIO when ready"
+	@echo "  3. Run 'make run-whole-training-pipeline' to build RAG index and save to object storage"
+	@echo "  4. RAG service will automatically load index from object storage when ready"
 	@echo "  5. Ensure RAG_ENABLED=true and RAG_SERVICE_URL=http://alm-rag:8002 in .env file"
 	@echo ""
 
@@ -60,10 +60,10 @@ loki-stack: ## 📊 Start Loki stack (Loki, Loki MCP Server, Grafana, Promtail)
 	@echo "   Starting Loki stack (Loki, Loki MCP Server, Grafana, Promtail)..."
 	@$(COMPOSE_CMD) -f compose.yaml up -d loki loki-mcp-server grafana promtail
 
-rag-stack: ## 🔍 Start RAG stack (Embedding, MinIO, RAG Service)
-	@echo "   Starting RAG stack (Embedding, MinIO, RAG Service)..."
-	@$(COMPOSE_CMD) -f compose.yaml up -d alm-embedding minio alm-rag
-	@echo "   ⚠️  Note: RAG service will poll MinIO for index"
+rag-stack: ## 🔍 Start RAG stack (Embedding, S4 object storage, RAG Service)
+	@echo "   Starting RAG stack (Embedding, S4 object storage, RAG Service)..."
+	@$(COMPOSE_CMD) -f compose.yaml up -d alm-embedding s4 alm-rag
+	@echo "   ⚠️  Note: RAG service will poll object storage for the index"
 	@echo "   It will become ready once index is available (after init job runs)"
 
 wait-for-embedding: ## ⏳ Wait for embedding service to be ready (optional, for manual use)
@@ -133,7 +133,7 @@ stop: ## 🛑 Stop all services
 	$(MAKE) -s stop-postgres & \
 	$(MAKE) -s stop-phoenix & \
 	$(MAKE) -s stop-embedding & \
-	$(MAKE) -s stop-minio & \
+	$(MAKE) -s stop-s4 & \
 	$(MAKE) -s stop-rag & \
 	wait
 	@$(MAKE) -s kill-ports
@@ -159,9 +159,9 @@ stop-embedding: ## 🛑 Stop Embedding Service
 	@$(COMPOSE_CMD) -f compose.yaml down alm-embedding || true
 	@echo "   ✓ Embedding service stopped and removed"
 
-stop-minio: ## 🛑 Stop MinIO
-	@$(COMPOSE_CMD) -f compose.yaml down minio || true
-	@echo "   ✓ MinIO stopped and removed"
+stop-s4: ## 🛑 Stop S4 object storage
+	@$(COMPOSE_CMD) -f compose.yaml down s4 || true
+	@echo "   ✓ S4 object storage stopped and removed"
 
 stop-rag: ## 🛑 Stop RAG Service
 	@$(COMPOSE_CMD) -f compose.yaml down alm-rag || true
@@ -234,18 +234,18 @@ kill-ports: ## 🔌 Kill processes using required ports
 		fuser -k 8082/tcp 2>/dev/null || true; \
 	fi
 	@echo "   ✓ AAP Mock 8082 killed"
-	@echo "   ✓ MinIO 9000 killed"
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		lsof -ti :9000 | xargs kill -9 2>/dev/null || true; \
+		lsof -ti :7480 | xargs kill -9 2>/dev/null || true; \
 	else \
-		fuser -k 9000/tcp 2>/dev/null || true; \
+		fuser -k 7480/tcp 2>/dev/null || true; \
 	fi
-	@echo "   ✓ MinIO 9001 killed"
+	@echo "   ✓ S4 S3 API 7480 killed"
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		lsof -ti :9001 | xargs kill -9 2>/dev/null || true; \
+		lsof -ti :5000 | xargs kill -9 2>/dev/null || true; \
 	else \
-		fuser -k 9001/tcp 2>/dev/null || true; \
+		fuser -k 5000/tcp 2>/dev/null || true; \
 	fi
+	@echo "   ✓ S4 web UI 5000 killed"
 
 status: ## 📊 Show status of all services
 	@echo "📊 Service Status:"
@@ -255,6 +255,7 @@ status: ## 📊 Show status of all services
 	@echo "   🔍 Loki MCP Server: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'loki-mcp-server' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:8081"
 	@echo "   🤖 Embedding Service: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'alm-embedding' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:8080"
 	@echo "   🔍 RAG Service: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'alm-rag' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:8002"
+	@echo "   🪣 S4 Object Storage: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 's4' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - S3 http://localhost:7480 | UI http://localhost:5000"
 	@echo "   📈 Grafana: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'grafana' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:3000"
 	@echo "   📝 Promtail: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'promtail' | grep -q 'Up' && echo 'Running' || echo 'Stopped')"
 	@echo "   🎭 AAP Mock: $(shell $(COMPOSE_CMD) ps 2>/dev/null | grep 'aap-mock' | grep -q 'Up' && echo 'Running' || echo 'Stopped') - http://localhost:8082"

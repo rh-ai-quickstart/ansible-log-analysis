@@ -25,7 +25,7 @@ async def main():
 
     # Step 2: Wait for RAG service to be ready (required for alert processing)
     # This also implicitly waits for the RAG init job to complete, as the service
-    # won't become ready until the index is built and available in MinIO
+    # won't become ready until the index is built and available in object storage
     logger.info("\n" + "=" * 70)
     logger.info("WAITING FOR RAG SERVICE TO BE READY")
     logger.info("=" * 70)

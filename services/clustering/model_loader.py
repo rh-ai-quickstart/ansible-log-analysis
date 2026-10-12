@@ -22,7 +22,7 @@ def load_from_minio(bucket_name: str, file_name: str) -> BaseEstimator:
     secret_key = os.getenv("MINIO_SECRET_KEY")
 
     if not all([endpoint, port, access_key, secret_key]):
-        raise ValueError("Missing required MinIO environment variables")
+        raise ValueError("Missing required object storage environment variables")
 
     minio_client = Minio(
         endpoint=f"{endpoint}:{port}",
@@ -31,7 +31,7 @@ def load_from_minio(bucket_name: str, file_name: str) -> BaseEstimator:
         secure=False,  # Set to True if using HTTPS
     )
 
-    # Load model from MinIO into memory
+    # Load model from object storage into memory
     response = minio_client.get_object(bucket_name, file_name)
     with io.BytesIO() as buffer:
         buffer.write(response.data)

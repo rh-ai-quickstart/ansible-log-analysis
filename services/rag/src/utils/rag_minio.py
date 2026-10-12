@@ -1,5 +1,5 @@
 """
-RAG-specific MinIO utilities for checking RAG index status.
+RAG-specific object storage utilities for checking RAG index status.
 """
 
 import json
@@ -16,16 +16,16 @@ def get_rag_index_status(
     minio_secret_key: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Get the status of the RAG index from MinIO LATEST.json file.
+    Get the status of the RAG index from object storage LATEST.json file.
 
     Configuration priority: function params > env vars > defaults (see get_minio_client).
 
     Args:
-        bucket_name: MinIO bucket name (default: "rag-index")
-        minio_endpoint: MinIO endpoint (overrides env/default)
-        minio_port: MinIO port (overrides env/default)
-        minio_access_key: MinIO access key (overrides env/default)
-        minio_secret_key: MinIO secret key (overrides env/default)
+        bucket_name: object storage bucket name (default: "rag-index")
+        minio_endpoint: object storage host (overrides env/default)
+        minio_port: S3 API port (overrides env/default)
+        minio_access_key: S3 access key (overrides env/default)
+        minio_secret_key: S3 secret key (overrides env/default)
 
     Returns:
         Dictionary with status information if LATEST.json exists, None otherwise
@@ -46,7 +46,7 @@ def get_rag_index_status(
             # LATEST.json doesn't exist or can't be read
             return None
     except Exception:
-        # MinIO connection failed
+        # object storage connection failed
         return None
 
 
@@ -58,16 +58,16 @@ def check_rag_index_exists(
     minio_secret_key: Optional[str] = None,
 ) -> bool:
     """
-    Check if a RAG index exists in MinIO and is in READY status.
+    Check if a RAG index exists in object storage and is in READY status.
 
     Configuration priority: function params > env vars > defaults (see get_minio_client).
 
     Args:
-        bucket_name: MinIO bucket name (default: "rag-index")
-        minio_endpoint: MinIO endpoint (overrides env/default)
-        minio_port: MinIO port (overrides env/default)
-        minio_access_key: MinIO access key (overrides env/default)
-        minio_secret_key: MinIO secret key (overrides env/default)
+        bucket_name: object storage bucket name (default: "rag-index")
+        minio_endpoint: object storage host (overrides env/default)
+        minio_port: S3 API port (overrides env/default)
+        minio_access_key: S3 access key (overrides env/default)
+        minio_secret_key: S3 secret key (overrides env/default)
 
     Returns:
         True if index exists and status is READY, False otherwise

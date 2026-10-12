@@ -519,7 +519,7 @@ class AnsibleErrorEmbedder:
         Load FAISS index and metadata from disk.
 
         DEPRECATED: This method is kept for backward compatibility with tests.
-        Production code should use RAGIndexLoader (from MinIO) instead.
+        Production code should use RAGIndexLoader (from object storage) instead.
         """
         logger.debug("=" * 60)
         logger.debug("LOADING INDEX AND METADATA")
@@ -570,12 +570,12 @@ class AnsibleErrorEmbedder:
 
     async def ingest_and_index_to_minio(self, chunks: List[Document]):
         """
-        Complete ingestion and indexing pipeline, saving to MinIO.
+        Complete ingestion and indexing pipeline, saving to object storage.
 
-        This is the async version that saves to MinIO instead of disk or PostgreSQL.
+        This is the async version that saves to object storage instead of disk or PostgreSQL.
         """
         logger.info("=" * 70)
-        logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING (MinIO)")
+        logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING (object storage)")
         logger.info("=" * 70)
 
         error_store = self.group_chunks_by_error(chunks)
@@ -584,7 +584,7 @@ class AnsibleErrorEmbedder:
         await self.save_to_minio()
 
         logger.info("=" * 70)
-        logger.info("INGESTION AND INDEXING COMPLETE (MinIO)")
+        logger.info("INGESTION AND INDEXING COMPLETE (object storage)")
         logger.info("=" * 70)
 
     async def save_to_minio(
@@ -596,7 +596,7 @@ class AnsibleErrorEmbedder:
         minio_secret_key: str = None,
     ):
         """
-        Save FAISS index and metadata to MinIO with status tracking via LATEST.json pointer file.
+        Save FAISS index and metadata to object storage with status tracking via LATEST.json pointer file.
 
         Process:
         1. Set status=BUILDING in LATEST.json
@@ -605,20 +605,20 @@ class AnsibleErrorEmbedder:
         4. If any step fails, set status=FAILED with error_message
 
         Args:
-            bucket_name: MinIO bucket name (default: "rag-index")
-            minio_endpoint: MinIO endpoint (from env if not provided)
-            minio_port: MinIO port (from env if not provided)
-            minio_access_key: MinIO access key (from env if not provided)
-            minio_secret_key: MinIO secret key (from env if not provided)
+            bucket_name: object storage bucket name (default: "rag-index")
+            minio_endpoint: object storage host (from env if not provided)
+            minio_port: S3 API port (from env if not provided)
+            minio_access_key: S3 access key (from env if not provided)
+            minio_secret_key: S3 secret key (from env if not provided)
         """
         if self.index is None:
-            raise ValueError("FAISS index must be built before saving to MinIO")
+            raise ValueError("FAISS index must be built before saving to object storage")
 
         if not self.error_store:
-            raise ValueError("Error store must be populated before saving to MinIO")
+            raise ValueError("Error store must be populated before saving to object storage")
 
         logger.info("=" * 60)
-        logger.info("SAVING RAG INDEX TO MINIO")
+        logger.info("SAVING RAG INDEX TO OBJECT STORAGE")
         logger.info("=" * 60)
 
         from utils.minio import get_minio_client, ensure_bucket_exists
@@ -629,7 +629,7 @@ class AnsibleErrorEmbedder:
 
         # Ensure bucket exists
         if ensure_bucket_exists(minio_client, bucket_name):
-            logger.info(f"Created MinIO bucket: {bucket_name}")
+            logger.info(f"Created object storage bucket: {bucket_name}")
 
         build_id = str(uuid.uuid4())
         build_ts = int(time.time())
@@ -711,7 +711,7 @@ class AnsibleErrorEmbedder:
                         length=len(pointer_json),
                     )
 
-                    logger.info("✓ RAG index saved to MinIO")
+                    logger.info("✓ RAG index saved to object storage")
                     logger.info("  Status: READY")
                     logger.info(f"  Total errors: {len(self.error_store)}")
                     logger.info(
@@ -731,7 +731,7 @@ class AnsibleErrorEmbedder:
         except Exception as e:
             # Step 4: Set FAILED status on error
             error_msg = str(e)[:500]  # Limit error message length
-            logger.error(f"Failed to save RAG index to MinIO: {e}")
+            logger.error(f"Failed to save RAG index to object storage: {e}")
 
             pointer = {
                 "status": "FAILED",
