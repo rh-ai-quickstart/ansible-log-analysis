@@ -481,7 +481,7 @@ class AnsibleErrorEmbedder:
         Persist FAISS index and metadata to disk.
 
         DEPRECATED: This method is kept for backward compatibility with tests.
-        Production code should use save_to_minio() instead.
+        Production code should use save_to_s3() instead.
         """
         logger.debug("=" * 60)
         logger.debug("SAVING INDEX AND METADATA")
@@ -519,7 +519,7 @@ class AnsibleErrorEmbedder:
         Load FAISS index and metadata from disk.
 
         DEPRECATED: This method is kept for backward compatibility with tests.
-        Production code should use RAGIndexLoader (from MinIO) instead.
+        Production code should use RAGIndexLoader (from object storage) instead.
         """
         logger.debug("=" * 60)
         logger.debug("LOADING INDEX AND METADATA")
@@ -553,7 +553,7 @@ class AnsibleErrorEmbedder:
         Complete ingestion and indexing pipeline.
 
         DEPRECATED: This method is kept for backward compatibility with tests.
-        Production code should use ingest_and_index_to_minio() instead.
+        Production code should use ingest_and_index_to_s3() instead.
         """
         logger.info("=" * 70)
         logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING")
@@ -568,35 +568,35 @@ class AnsibleErrorEmbedder:
         logger.info("INGESTION AND INDEXING COMPLETE")
         logger.info("=" * 70)
 
-    async def ingest_and_index_to_minio(self, chunks: List[Document]):
+    async def ingest_and_index_to_s3(self, chunks: List[Document]):
         """
-        Complete ingestion and indexing pipeline, saving to MinIO.
+        Complete ingestion and indexing pipeline, saving to object storage.
 
-        This is the async version that saves to MinIO instead of disk or PostgreSQL.
+        This is the async version that saves to object storage instead of disk or PostgreSQL.
         """
         logger.info("=" * 70)
-        logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING (MinIO)")
+        logger.info("ANSIBLE ERROR RAG SYSTEM - INGESTION AND INDEXING (object storage)")
         logger.info("=" * 70)
 
         error_store = self.group_chunks_by_error(chunks)
         embeddings, error_ids = self.create_composite_embeddings(error_store)
         self.build_faiss_index(embeddings, error_ids, error_store)
-        await self.save_to_minio()
+        await self.save_to_s3()
 
         logger.info("=" * 70)
-        logger.info("INGESTION AND INDEXING COMPLETE (MinIO)")
+        logger.info("INGESTION AND INDEXING COMPLETE (object storage)")
         logger.info("=" * 70)
 
-    async def save_to_minio(
+    async def save_to_s3(
         self,
         bucket_name: str = "rag-index",
-        minio_endpoint: str = None,
-        minio_port: str = None,
-        minio_access_key: str = None,
-        minio_secret_key: str = None,
+        s3_endpoint: str = None,
+        s3_port: str = None,
+        s3_access_key: str = None,
+        s3_secret_key: str = None,
     ):
         """
-        Save FAISS index and metadata to MinIO with status tracking via LATEST.json pointer file.
+        Save FAISS index and metadata to object storage with status tracking via LATEST.json pointer file.
 
         Process:
         1. Set status=BUILDING in LATEST.json
@@ -605,31 +605,31 @@ class AnsibleErrorEmbedder:
         4. If any step fails, set status=FAILED with error_message
 
         Args:
-            bucket_name: MinIO bucket name (default: "rag-index")
-            minio_endpoint: MinIO endpoint (from env if not provided)
-            minio_port: MinIO port (from env if not provided)
-            minio_access_key: MinIO access key (from env if not provided)
-            minio_secret_key: MinIO secret key (from env if not provided)
+            bucket_name: object storage bucket name (default: "rag-index")
+            s3_endpoint: object storage host (from env if not provided)
+            s3_port: S3 API port (from env if not provided)
+            s3_access_key: S3 access key (from env if not provided)
+            s3_secret_key: S3 secret key (from env if not provided)
         """
         if self.index is None:
-            raise ValueError("FAISS index must be built before saving to MinIO")
+            raise ValueError("FAISS index must be built before saving to object storage")
 
         if not self.error_store:
-            raise ValueError("Error store must be populated before saving to MinIO")
+            raise ValueError("Error store must be populated before saving to object storage")
 
         logger.info("=" * 60)
-        logger.info("SAVING RAG INDEX TO MINIO")
+        logger.info("SAVING RAG INDEX TO OBJECT STORAGE")
         logger.info("=" * 60)
 
-        from utils.minio import get_minio_client, ensure_bucket_exists
+        from utils.s3 import get_s3_client, ensure_bucket_exists
 
-        minio_client = get_minio_client(
-            minio_endpoint, minio_port, minio_access_key, minio_secret_key
+        s3_client = get_s3_client(
+            s3_endpoint, s3_port, s3_access_key, s3_secret_key
         )
 
         # Ensure bucket exists
-        if ensure_bucket_exists(minio_client, bucket_name):
-            logger.info(f"Created MinIO bucket: {bucket_name}")
+        if ensure_bucket_exists(s3_client, bucket_name):
+            logger.info(f"Created object storage bucket: {bucket_name}")
 
         build_id = str(uuid.uuid4())
         build_ts = int(time.time())
@@ -642,7 +642,7 @@ class AnsibleErrorEmbedder:
             "build_ts": build_ts,
         }
         pointer_json = json.dumps(pointer)
-        minio_client.put_object(
+        s3_client.put_object(
             bucket_name,
             "LATEST.json",
             io.BytesIO(pointer_json.encode()),
@@ -660,7 +660,7 @@ class AnsibleErrorEmbedder:
 
             try:
                 # Upload FAISS index to fixed path
-                minio_client.fput_object(bucket_name, "index.faiss", tmp_index_path)
+                s3_client.fput_object(bucket_name, "index.faiss", tmp_index_path)
                 index_size_mb = os.path.getsize(tmp_index_path) / (1024 * 1024)
                 logger.info(
                     f"Uploaded FAISS index: index.faiss ({index_size_mb:.2f} MB)"
@@ -683,7 +683,7 @@ class AnsibleErrorEmbedder:
 
                 try:
                     # Upload metadata to fixed path
-                    minio_client.fput_object(
+                    s3_client.fput_object(
                         bucket_name, "metadata.pkl", tmp_metadata_path
                     )
                     metadata_size_mb = os.path.getsize(tmp_metadata_path) / (
@@ -704,14 +704,14 @@ class AnsibleErrorEmbedder:
                         "build_ts": build_ts,
                     }
                     pointer_json = json.dumps(pointer)
-                    minio_client.put_object(
+                    s3_client.put_object(
                         bucket_name,
                         "LATEST.json",
                         io.BytesIO(pointer_json.encode()),
                         length=len(pointer_json),
                     )
 
-                    logger.info("✓ RAG index saved to MinIO")
+                    logger.info("✓ RAG index saved to object storage")
                     logger.info("  Status: READY")
                     logger.info(f"  Total errors: {len(self.error_store)}")
                     logger.info(
@@ -731,14 +731,14 @@ class AnsibleErrorEmbedder:
         except Exception as e:
             # Step 4: Set FAILED status on error
             error_msg = str(e)[:500]  # Limit error message length
-            logger.error(f"Failed to save RAG index to MinIO: {e}")
+            logger.error(f"Failed to save RAG index to object storage: {e}")
 
             pointer = {
                 "status": "FAILED",
                 "error_message": error_msg,
             }
             pointer_json = json.dumps(pointer)
-            minio_client.put_object(
+            s3_client.put_object(
                 bucket_name,
                 "LATEST.json",
                 io.BytesIO(pointer_json.encode()),

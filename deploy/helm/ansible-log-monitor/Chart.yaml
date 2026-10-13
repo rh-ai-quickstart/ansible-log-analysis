@@ -29,9 +29,10 @@ dependencies:
   - name: pgvector
     version: 0.1.0
     repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
-  - name: minio
+  - name: aws-compatible-storage
     version: 0.1.0
     repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
+    condition: aws-compatible-storage.enabled
   - name: mcp-servers
     version: 0.5.7
     repository: https://rh-ai-quickstart.github.io/ai-architecture-charts

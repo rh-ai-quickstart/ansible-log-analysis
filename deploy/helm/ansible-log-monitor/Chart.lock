@@ -2,7 +2,7 @@ dependencies:
 - name: pgvector
   repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
   version: 0.1.0
-- name: minio
+- name: aws-compatible-storage
   repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
   version: 0.1.0
 - name: mcp-servers
@@ -11,5 +11,8 @@ dependencies:
 - name: aap-mock
   repository: ""
   version: 0.1.0
-digest: sha256:1b92085952bc8c664a890916b59d895785e13c49b3bd94e0458b46d86c0b2bec
-generated: "2025-12-04T10:02:37.704249-05:00"
+- name: rag
+  repository: ""
+  version: 0.1.0
+digest: sha256:11e39cf16bb48ebeacf8f6346a84f56547733707f2db36bee6d10ee3b8dd157b
+generated: "2026-09-30T22:04:06.963760224+03:00"

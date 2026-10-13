@@ -241,27 +241,30 @@ services:
     # Note: This service requires significant memory (8Gi recommended)
     # Adjust resources based on your system capabilities
 
-  minio:
-    image: minio/minio:latest
-    container_name: minio
+  # Object storage: aws-compatible-storage (S4). S3 API on 7480, web UI on 5000.
+  s4:
+    image: quay.io/rh-aiservices-bu/s4:0.3.2
+    container_name: s4
     ports:
-      - "9000:9000"
-      - "9001:9001"  # MinIO Console port
+      - "7480:7480"  # S3 API
+      - "5000:5000"  # Web UI
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
-      - MINIO_SERVER_URL=http://minio:9000
-    command: server /data --console-address ":9001"
+      # Demo credentials for local development only.
+      - AWS_ACCESS_KEY_ID=s4admin
+      - AWS_SECRET_ACCESS_KEY=s4secret
+      - AWS_S3_ENDPOINT=http://localhost:7480
+      - AWS_DEFAULT_REGION=us-east-1
     networks:
       - alm
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # S4 has no /minio/health/* equivalent; the web UI serves /api.
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
     volumes:
-      - minio_data:/data
+      - s4_data:/var/lib/ceph/radosgw
 
   alm-rag:
     build:
@@ -271,12 +274,12 @@ services:
     ports:
       - "8002:8002"
     environment:
-      # MinIO configuration (for RAG index storage)
-      # Note: Inside Docker, use 'minio' service name, not 'localhost'
-      - MINIO_ENDPOINT=minio
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      # Object storage configuration (for RAG index storage)
+      # Note: inside the compose network, use the 's4' service name, not 'localhost'
+      - S3_ENDPOINT=s4
+      - S3_PORT=7480
+      - S3_ACCESS_KEY=s4admin
+      - S3_SECRET_KEY=s4secret
       - RAG_BUCKET_NAME=rag-index
       # Embedding service
       - EMBEDDINGS_LLM_URL=http://alm-embedding:8080
@@ -287,10 +290,10 @@ services:
     depends_on:
       alm-embedding:
         condition: service_healthy
-      minio:
+      s4:
         condition: service_healthy
-      # Note: RAG service will wait for index to be ready in MinIO
-      # In local dev, you may need to run init job first to create the index
+      # Note: RAG service will wait for the index to be ready in object storage.
+      # In local dev, you may need to run the init job first to create the index.
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
@@ -304,5 +307,5 @@ volumes:
   aap_mock_data:
   aap_mock_logs:
   loki_data:
-  minio_data:
+  s4_data:
   ansible_logs:

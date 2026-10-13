@@ -54,7 +54,7 @@ spec:
                       cmd = ["kubectl", "wait", "--for=condition=complete", f"--timeout={max_wait}s", f"job/{job_name}", "-n", namespace]
                   else:
                       print("WARNING: Neither 'oc' nor 'kubectl' found, skipping job wait check")
-                      print("  Proceeding to check MinIO index directly...")
+                      print("  Proceeding to check object storage index directly...")
                       return True
                   
                   try:
@@ -70,11 +70,11 @@ spec:
                       return False
                   except Exception as e:
                       print(f"WARNING: Error checking job status: {e}")
-                      print("  Proceeding to check MinIO index directly...")
+                      print("  Proceeding to check object storage index directly...")
                       return True
 
-              def check_minio_index():
-                  """Check if RAG index is ready in MinIO."""
+              def check_index():
+                  """Check if the RAG index is ready in object storage (S4)."""
                   try:
                       from minio import Minio
                   except ImportError as e:
@@ -82,22 +82,22 @@ spec:
                       print("  Make sure 'minio' package is installed in the container image")
                       sys.exit(1)
 
-                  endpoint = os.getenv("MINIO_ENDPOINT")
-                  port = os.getenv("MINIO_PORT", "9000")
-                  access_key = os.getenv("MINIO_ACCESS_KEY")
-                  secret_key = os.getenv("MINIO_SECRET_KEY")
+                  endpoint = os.getenv("S3_ENDPOINT")
+                  port = os.getenv("S3_PORT", "7480")
+                  access_key = os.getenv("S3_ACCESS_KEY")
+                  secret_key = os.getenv("S3_SECRET_KEY")
                   bucket_name = os.getenv("RAG_BUCKET_NAME", "rag-index")
                   max_wait = int(os.getenv("MAX_WAIT", "300"))
 
                   if not all([endpoint, port, access_key, secret_key]):
-                      print("ERROR: Missing required MinIO environment variables")
-                      print(f"  MINIO_ENDPOINT: {endpoint}")
-                      print(f"  MINIO_PORT: {port}")
-                      print(f"  MINIO_ACCESS_KEY: {'***' if access_key else 'MISSING'}")
-                      print(f"  MINIO_SECRET_KEY: {'***' if secret_key else 'MISSING'}")
+                      print("ERROR: Missing required object storage environment variables")
+                      print(f"  S3_ENDPOINT: {endpoint}")
+                      print(f"  S3_PORT: {port}")
+                      print(f"  S3_ACCESS_KEY: {'***' if access_key else 'MISSING'}")
+                      print(f"  S3_SECRET_KEY: {'***' if secret_key else 'MISSING'}")
                       sys.exit(1)
 
-                  print(f"\nChecking MinIO for RAG index in bucket '{bucket_name}'...")
+                  print(f"\nChecking object storage for RAG index in bucket '{bucket_name}'...")
                   client = Minio(
                       f"{endpoint}:{port}",
                       access_key=access_key,
@@ -158,33 +158,28 @@ spec:
               if not wait_for_job_completion(job_name, namespace):
                   sys.exit(1)
               
-              # Step 2: Check MinIO index
-              if not check_minio_index():
+              # Step 2: Check the index in object storage
+              if not check_index():
                   sys.exit(1)
               
               print("\n✓ RAG initialization complete - service can start!")
               PYTHON_SCRIPT
           env:
-            - name: MINIO_ENDPOINT
+            # Object storage: aws-compatible-storage (S4), S3 API on :7480.
+            - name: S3_ENDPOINT
+              value: "aws-compatible-storage"
+            - name: S3_PORT
+              value: "7480"
+            - name: S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: minio
-                  key: host
-            - name: MINIO_PORT
+                  name: aws-compatible-storage-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: minio
-                  key: port
-            - name: MINIO_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: minio
-                  key: user
-            - name: MINIO_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: minio
-                  key: password
+                  name: aws-compatible-storage-credentials
+                  key: AWS_SECRET_ACCESS_KEY
             - name: RAG_BUCKET_NAME
               value: {{ .Values.rag.bucketName | default "rag-index" | quote }}
             - name: MAX_WAIT

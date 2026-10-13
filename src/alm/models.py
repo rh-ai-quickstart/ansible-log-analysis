@@ -151,5 +151,5 @@ class LogEntry(BaseModel):
         return v
 
 
-# RAG embeddings are now stored in MinIO, not PostgreSQL
-# The RAGEmbedding table has been removed in favor of MinIO artifact storage
+# RAG embeddings are now stored in object storage, not PostgreSQL
+# The RAGEmbedding table has been removed in favor of object storage artifact storage
