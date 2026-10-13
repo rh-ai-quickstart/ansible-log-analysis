@@ -276,10 +276,10 @@ services:
     environment:
       # Object storage configuration (for RAG index storage)
       # Note: inside the compose network, use the 's4' service name, not 'localhost'
-      - MINIO_ENDPOINT=s4
-      - MINIO_PORT=7480
-      - MINIO_ACCESS_KEY=s4admin
-      - MINIO_SECRET_KEY=s4secret
+      - S3_ENDPOINT=s4
+      - S3_PORT=7480
+      - S3_ACCESS_KEY=s4admin
+      - S3_SECRET_KEY=s4secret
       - RAG_BUCKET_NAME=rag-index
       # Embedding service
       - EMBEDDINGS_LLM_URL=http://alm-embedding:8080

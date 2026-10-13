@@ -239,7 +239,7 @@ kill-ports: ## 🔌 Kill processes using required ports
 	else \
 		fuser -k 7480/tcp 2>/dev/null || true; \
 	fi
-	@echo "   ✓ S4 S3 API 7480 killed"
+	@echo "   ✓ S4 API 7480 killed"
 	@if [ "$$(uname)" = "Darwin" ]; then \
 		lsof -ti :5000 | xargs kill -9 2>/dev/null || true; \
 	else \

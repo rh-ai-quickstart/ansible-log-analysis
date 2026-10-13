@@ -198,8 +198,8 @@ their buckets exist.
 | `clustering-model` | `clustering_model.joblib` |
 | `loki-chunks` / `loki-ruler` / `loki-admin` | Loki |
 
-Application services still use `MINIO_*` environment variable names — the app talks
-plain S3 through the `minio-py` client, so only the endpoint and credentials changed.
+Application services use `S3_*` environment variable names. The app talks
+plain S3 through the `minio-py` library.
 
 > **Credentials:** `values.yaml` ships demo credentials (`s4admin` / `s4secret`, UI
 > `admin` / `alm_password`). Override them with a secrets overlay

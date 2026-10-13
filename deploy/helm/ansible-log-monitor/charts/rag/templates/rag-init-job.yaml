@@ -87,16 +87,16 @@ spec:
             - name: RAG_BUCKET_NAME
               value: {{ .Values.rag.bucketName | default "rag-index" | quote }}
             # Object storage: aws-compatible-storage (S4), S3 API on :7480.
-            - name: MINIO_ENDPOINT
+            - name: S3_ENDPOINT
               value: "aws-compatible-storage"
-            - name: MINIO_PORT
+            - name: S3_PORT
               value: "7480"
-            - name: MINIO_ACCESS_KEY
+            - name: S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: aws-compatible-storage-credentials
                   key: AWS_ACCESS_KEY_ID
-            - name: MINIO_SECRET_KEY
+            - name: S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: aws-compatible-storage-credentials

@@ -61,7 +61,7 @@ async def build_rag_index():
     from utils.config import config
     from rag.ingest_and_chunk import AnsibleErrorParser
     from rag.embed_and_index import AnsibleErrorEmbedder
-    from utils.rag_minio import check_rag_index_exists, get_rag_index_status
+    from utils.rag_s3 import check_rag_index_exists, get_rag_index_status
 
     # Check if RAG is enabled
     rag_enabled_env = os.getenv("RAG_ENABLED", "true").lower()
@@ -140,7 +140,7 @@ async def build_rag_index():
         logger.info(f"{'=' * 70}")
 
         # Build and save index to object storage
-        await embedder.ingest_and_index_to_minio(all_chunks)
+        await embedder.ingest_and_index_to_s3(all_chunks)
         logger.info("\n" + "=" * 70)
         logger.info("✓ RAG INDEX BUILD COMPLETE (object storage)")
         logger.info("=" * 70)

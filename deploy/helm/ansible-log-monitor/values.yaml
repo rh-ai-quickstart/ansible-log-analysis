@@ -14,7 +14,7 @@ backend:
 #
 # NOTE: consumers reference the service name and Secret literally. If you change
 # fullnameOverride here you must also update:
-#   - charts/{backend,clustering,rag}/values.yaml  (env: MINIO_ENDPOINT / secretKeyRef)
+#   - charts/{backend,clustering,rag}/values.yaml  (env: S3_ENDPOINT / secretKeyRef)
 #   - charts/rag/templates/{deployment,rag-init-job}.yaml
 #   - loki.loki.storage.s3.endpoint below
 #   - templates/_helpers.tpl in this chart

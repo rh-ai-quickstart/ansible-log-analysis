@@ -116,7 +116,7 @@ async def poll_for_index():
                 )
                 if force_rebuild:
                     try:
-                        response = index_loader.minio_client.get_object(
+                        response = index_loader.s3_client.get_object(
                             index_loader.bucket_name, "LATEST.json"
                         )
                         pointer = json.loads(response.read().decode())

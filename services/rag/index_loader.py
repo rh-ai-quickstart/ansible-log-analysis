@@ -22,10 +22,10 @@ class RAGIndexLoader:
 
     def __init__(
         self,
-        minio_endpoint: str = None,
-        minio_port: str = None,
-        minio_access_key: str = None,
-        minio_secret_key: str = None,
+        s3_endpoint: str = None,
+        s3_port: str = None,
+        s3_access_key: str = None,
+        s3_secret_key: str = None,
         bucket_name: str = "rag-index",
         model_name: str = "nomic-ai/nomic-embed-text-v1.5",
     ):
@@ -33,26 +33,26 @@ class RAGIndexLoader:
         Initialize the index loader.
 
         Args:
-            minio_endpoint: object storage host (from env if not provided)
-            minio_port: S3 API port (from env if not provided)
-            minio_access_key: S3 access key (from env if not provided)
-            minio_secret_key: S3 secret key (from env if not provided)
+            s3_endpoint: object storage host (from env if not provided)
+            s3_port: S3 API port (from env if not provided)
+            s3_access_key: S3 access key (from env if not provided)
+            s3_secret_key: S3 secret key (from env if not provided)
             bucket_name: object storage bucket name (default: "rag-index")
             model_name: Name of the embedding model (for validation)
         """
         # Get object storage config from environment
-        endpoint = minio_endpoint or os.getenv("MINIO_ENDPOINT")
-        port = minio_port or os.getenv("MINIO_PORT", "7480")
-        access_key = minio_access_key or os.getenv("MINIO_ACCESS_KEY")
-        secret_key = minio_secret_key or os.getenv("MINIO_SECRET_KEY")
+        endpoint = s3_endpoint or os.getenv("S3_ENDPOINT")
+        port = s3_port or os.getenv("S3_PORT", "7480")
+        access_key = s3_access_key or os.getenv("S3_ACCESS_KEY")
+        secret_key = s3_secret_key or os.getenv("S3_SECRET_KEY")
 
         if not all([endpoint, port, access_key, secret_key]):
             raise ValueError(
                 "Missing required object storage environment variables: "
-                "MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY"
+                "S3_ENDPOINT, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY"
             )
 
-        self.minio_client = Minio(
+        self.s3_client = Minio(
             endpoint=f"{endpoint}:{port}",
             access_key=access_key,
             secret_key=secret_key,
@@ -76,10 +76,10 @@ class RAGIndexLoader:
             True if status is READY, False otherwise
         """
         try:
-            if not self.minio_client.bucket_exists(self.bucket_name):
+            if not self.s3_client.bucket_exists(self.bucket_name):
                 return False
 
-            response = self.minio_client.get_object(self.bucket_name, "LATEST.json")
+            response = self.s3_client.get_object(self.bucket_name, "LATEST.json")
             pointer = json.loads(response.read().decode())
             return pointer.get("status") == "READY"
         except Exception:
@@ -95,7 +95,7 @@ class RAGIndexLoader:
         print("Loading RAG index from object storage...")
 
         # Check if bucket exists
-        if not self.minio_client.bucket_exists(self.bucket_name):
+        if not self.s3_client.bucket_exists(self.bucket_name):
             raise ValueError(
                 f"object storage bucket '{self.bucket_name}' does not exist. "
                 "Run init job first to create the index."
@@ -103,7 +103,7 @@ class RAGIndexLoader:
 
         # Check status from LATEST.json
         try:
-            response = self.minio_client.get_object(self.bucket_name, "LATEST.json")
+            response = self.s3_client.get_object(self.bucket_name, "LATEST.json")
             pointer = json.loads(response.read().decode())
             status = pointer.get("status")
             self.last_loaded_build_id = pointer.get("build_id")
@@ -147,7 +147,7 @@ class RAGIndexLoader:
 
             # Download FAISS index to temp file
             try:
-                self.minio_client.fget_object(
+                self.s3_client.fget_object(
                     self.bucket_name, "index.faiss", str(index_path)
                 )
                 print("Downloaded FAISS index to temp file")
@@ -166,7 +166,7 @@ class RAGIndexLoader:
 
             # Download metadata to temp file
             try:
-                self.minio_client.fget_object(
+                self.s3_client.fget_object(
                     self.bucket_name, "metadata.pkl", str(metadata_path)
                 )
                 print("Downloaded metadata to temp file")

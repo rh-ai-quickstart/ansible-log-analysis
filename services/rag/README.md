@@ -107,12 +107,12 @@ Reload the index from object storage without restarting the service.
 ## Environment Variables
 
 Object storage is [aws-compatible-storage](https://github.com/rh-ai-quickstart/ai-architecture-charts/tree/main/aws-compatible-storage) (S4).
-The `MINIO_*` names are retained because the service talks plain S3 through the `minio-py` client.
+Uses the `minio-py` library which speaks plain S3 protocol.
 
-- `MINIO_ENDPOINT` - object storage host (required, e.g. `aws-compatible-storage`)
-- `MINIO_PORT` - S3 API port (default: `7480`)
-- `MINIO_ACCESS_KEY` - S3 access key (required, from `aws-compatible-storage-credentials`)
-- `MINIO_SECRET_KEY` - S3 secret key (required, from `aws-compatible-storage-credentials`)
+- `S3_ENDPOINT` - object storage host (required, e.g. `aws-compatible-storage`)
+- `S3_PORT` - S3 API port (default: `7480`)
+- `S3_ACCESS_KEY` - S3 access key (required, from `aws-compatible-storage-credentials`)
+- `S3_SECRET_KEY` - S3 secret key (required, from `aws-compatible-storage-credentials`)
 - `RAG_BUCKET_NAME` - bucket name (default: `rag-index`)
 - `EMBEDDINGS_LLM_URL` - URL of the embedding service (default: `http://alm-embedding:8080`)
 - `RAG_MODEL_NAME` - Name of the embedding model (default: `nomic-ai/nomic-embed-text-v1.5`)

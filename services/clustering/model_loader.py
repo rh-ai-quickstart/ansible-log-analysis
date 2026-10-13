@@ -10,21 +10,21 @@ def load_from_local_file(model_path: str) -> BaseEstimator:
     return joblib.load(model_path)
 
 
-def load_from_minio(bucket_name: str, file_name: str) -> BaseEstimator:
+def load_from_s3(bucket_name: str, file_name: str) -> BaseEstimator:
     import joblib
     import io
     from minio import Minio
 
     # Validate environment variables
-    endpoint = os.getenv("MINIO_ENDPOINT")
-    port = os.getenv("MINIO_PORT")
-    access_key = os.getenv("MINIO_ACCESS_KEY")
-    secret_key = os.getenv("MINIO_SECRET_KEY")
+    endpoint = os.getenv("S3_ENDPOINT")
+    port = os.getenv("S3_PORT")
+    access_key = os.getenv("S3_ACCESS_KEY")
+    secret_key = os.getenv("S3_SECRET_KEY")
 
     if not all([endpoint, port, access_key, secret_key]):
         raise ValueError("Missing required object storage environment variables")
 
-    minio_client = Minio(
+    s3_client = Minio(
         endpoint=f"{endpoint}:{port}",
         access_key=access_key,
         secret_key=secret_key,
@@ -32,7 +32,7 @@ def load_from_minio(bucket_name: str, file_name: str) -> BaseEstimator:
     )
 
     # Load model from object storage into memory
-    response = minio_client.get_object(bucket_name, file_name)
+    response = s3_client.get_object(bucket_name, file_name)
     with io.BytesIO() as buffer:
         buffer.write(response.data)
         buffer.seek(0)
