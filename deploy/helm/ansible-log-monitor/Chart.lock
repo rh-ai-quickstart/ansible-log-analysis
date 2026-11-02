@@ -4,7 +4,7 @@ dependencies:
   version: 0.1.0
 - name: aws-compatible-storage
   repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
-  version: 0.1.0
+  version: 0.2.0
 - name: mcp-servers
   repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
   version: 0.5.7
@@ -14,5 +14,5 @@ dependencies:
 - name: rag
   repository: ""
   version: 0.1.0
-digest: sha256:11e39cf16bb48ebeacf8f6346a84f56547733707f2db36bee6d10ee3b8dd157b
-generated: "2026-09-30T22:04:06.963760224+03:00"
+digest: sha256:f014bac0c6552a357497b59b612ca6065bbb8af5398b71cec6c5cf6c5cc7f238
+generated: "2026-11-02T09:31:13.15475178+02:00"
