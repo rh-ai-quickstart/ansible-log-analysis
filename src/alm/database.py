@@ -29,7 +29,7 @@ async def init_tables(delete_tables=False):
 
         # Create all tables
         await conn.run_sync(GrafanaAlert.metadata.create_all)
-        # Note: RAG embeddings are stored in MinIO, not PostgreSQL
+        # Note: RAG embeddings are stored in object storage, not PostgreSQL
 
 
 def get_session():

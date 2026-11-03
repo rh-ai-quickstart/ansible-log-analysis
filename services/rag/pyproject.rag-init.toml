@@ -19,7 +19,7 @@ dependencies = [
     "faiss-cpu>=1.7.4",
     "numpy>=1.24.0",
     
-    # MinIO client
+    # S3 client (minio-py) — talks to aws-compatible-storage (S4)
     "minio>=7.2.17",
     
     # Configuration

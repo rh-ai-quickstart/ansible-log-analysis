@@ -28,8 +28,22 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
+        # Gate on the S4 web UI's /api endpoint. S4 has no /minio/health/* equivalent.
+        - name: wait-for-object-storage
+          image: {{ .Values.global.jobImages.shell | quote }}
+          command:
+            - sh
+            - -c
+            - |
+              STORAGE_URL="http://{{ .Values.global.objectStorage.host }}:{{ .Values.global.objectStorage.uiPort }}/api"
+              echo "Waiting for object storage (S4) at $STORAGE_URL..."
+              until curl -f -s -o /dev/null "$STORAGE_URL"; do
+                echo "Still waiting for object storage..."
+                sleep 5
+              done
+              echo "Object storage is ready!"
         - name: wait-for-embedding
-          image: curlimages/curl:latest
+          image: {{ .Values.global.jobImages.shell | quote }}
           command:
             - sh
             - -c
@@ -72,26 +86,21 @@ spec:
                   fieldPath: metadata.namespace
             - name: RAG_BUCKET_NAME
               value: {{ .Values.rag.bucketName | default "rag-index" | quote }}
-            - name: MINIO_ENDPOINT
+            # Object storage: aws-compatible-storage (S4), S3 API on :7480.
+            - name: S3_ENDPOINT
+              value: "aws-compatible-storage"
+            - name: S3_PORT
+              value: "7480"
+            - name: S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: minio
-                  key: host
-            - name: MINIO_PORT
+                  name: aws-compatible-storage-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: minio
-                  key: port
-            - name: MINIO_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: minio
-                  key: user
-            - name: MINIO_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: minio
-                  key: password
+                  name: aws-compatible-storage-credentials
+                  key: AWS_SECRET_ACCESS_KEY
             - name: RAG_ENABLED
               value: "true"
             - name: RAG_FORCE_REBUILD

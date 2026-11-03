@@ -150,17 +150,21 @@ uninstall:
 	@oc delete pvc --all -n $(NAMESPACE) 2>/dev/null || true
 	@echo "✅ Ansible Log Monitor uninstalled completely (all data removed)"
 
-# Upgrade 
+# Upgrade
 .PHONY: upgrade
 upgrade:
+	$(call prompt_openai_credentials)
 	@echo "Upgrading Ansible Log Monitor in namespace $(NAMESPACE)..."
-	@helm upgrade $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args) 
+	@helm upgrade $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args) -f $(MODEL_VALUES_FILE)
+	@rm -f $(MODEL_VALUES_FILE)
 	@echo "Ansible Log Monitor upgraded"
 
 .PHONY: upgrade-forced
 upgrade-forced:
+	$(call prompt_openai_credentials)
 	@echo "Upgrading Ansible Log Monitor in namespace $(NAMESPACE)..."
-	@helm upgrade $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args) --force
+	@helm upgrade $(ANSIBLE_LOG_MONITOR_CHART) ./ansible-log-monitor -n $(NAMESPACE) $(env_args) -f $(MODEL_VALUES_FILE) --force
+	@rm -f $(MODEL_VALUES_FILE)
 	@echo "Ansible Log Monitor upgraded"
 
 # Restart

@@ -118,27 +118,23 @@ httpRoute:
   #       value: v2
 
 env:
-  - name: MINIO_ENDPOINT
+  # Object storage: aws-compatible-storage (S4). S3 API on :7480.
+  # Uses the minio-py library which speaks plain S3 protocol.
+  - name: S3_ENDPOINT
+    value: "aws-compatible-storage"
+  - name: S3_PORT
+    value: "7480"
+  - name: S3_ACCESS_KEY
     valueFrom:
       secretKeyRef:
-        name: minio
-        key: host
-  - name: MINIO_ACCESS_KEY
+        name: aws-compatible-storage-credentials
+        key: AWS_ACCESS_KEY_ID
+  - name: S3_SECRET_KEY
     valueFrom:
       secretKeyRef:
-        name: minio
-        key: user
-  - name: MINIO_SECRET_KEY
-    valueFrom:
-      secretKeyRef:
-        name: minio
-        key: password
-  - name: MINIO_PORT
-    valueFrom:
-      secretKeyRef:
-        name: minio
-        key: port
-  - name: MINIO_BUCKET_NAME
+        name: aws-compatible-storage-credentials
+        key: AWS_SECRET_ACCESS_KEY
+  - name: S3_BUCKET_NAME
     value: "clustering-model"
 
 resources: {}

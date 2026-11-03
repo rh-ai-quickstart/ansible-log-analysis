@@ -81,7 +81,7 @@ This allows business leaders to significantly reduce operational costs while con
 * Sentence Transformers - log clustering by template similarity.
 * TEI (Text Embeddings Inference) - high-performance embedding service for RAG.
 * FAISS - vector similarity search for knowledge base retrieval.
-* MinIO - object storage for RAG index persistence.
+* [aws-compatible-storage](https://github.com/rh-ai-quickstart/ai-architecture-charts/tree/main/aws-compatible-storage) (S4) - S3-compatible object storage for RAG index persistence and Loki chunks.
 
 #### Observability
 * Phoenix + OpenTelemetry - distributed tracing for LLM calls and pipeline monitoring.

@@ -19,7 +19,7 @@ from alm.agents.output_scheme import (
     RouterStepByStepSolutionSchema,
 )
 import numpy as np
-from alm.utils.minio import upload_model_to_minio
+from alm.utils.s3 import upload_model_to_s3
 import requests
 
 from alm.agents.prompts.prompts import (
@@ -272,9 +272,9 @@ def train_embed_and_cluster_logs(
     cluster_labels = _handle_outlaier_cluster(cluster_labels)
 
     if save_cluster_model:
-        if os.getenv("MINIO_BUCKET_NAME"):
-            upload_model_to_minio(
-                cluster_model, os.getenv("MINIO_BUCKET_NAME"), "clustering_model.joblib"
+        if os.getenv("S3_BUCKET_NAME"):
+            upload_model_to_s3(
+                cluster_model, os.getenv("S3_BUCKET_NAME"), "clustering_model.joblib"
             )
         else:
             joblib.dump(cluster_model, os.getenv("TMP_CLUSTER_MODEL_PATH"))

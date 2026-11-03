@@ -8,19 +8,71 @@ backend:
     OPENAI_API_ENDPOINT_WITH_TOOL_CALLING: ""
     OPENAI_MODEL_WITH_TOOL_CALLING: ""
 
-minio:
-  secret:
-    user: minio_alm_user
-    password: minio_alm_password
-    host: minio
-    port: "9000"
+# Object storage: aws-compatible-storage (S4 - Super Simple Storage Service).
+# S3 API on :7480, web UI on :5000. Credentials land in the Secret
+# "aws-compatible-storage-credentials" (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).
+#
+# NOTE: consumers reference the service name and Secret literally. If you change
+# fullnameOverride here you must also update:
+#   - charts/{backend,clustering,rag}/values.yaml  (env: S3_ENDPOINT / secretKeyRef)
+#   - charts/rag/templates/{deployment,rag-init-job}.yaml
+#   - loki.loki.storage.s3.endpoint below
+#   - templates/_helpers.tpl in this chart
+aws-compatible-storage:
+  enabled: true
+  fullnameOverride: aws-compatible-storage
+  image:
+    repository: quay.io/rh-aiservices-bu/s4
+    tag: "0.3.2"
+    pullPolicy: IfNotPresent
+  s3:
+    # Demo credentials. Override with a secrets overlay (-f secrets.yaml) for anything
+    # beyond a throwaway namespace. Must stay in sync with loki.loki.storage.s3 below.
+    accessKeyId: s4admin
+    secretAccessKey: s4secret
+    region: us-east-1
+  auth:
+    enabled: true
+    username: admin
+    password: alm_password
+  route:
+    # Web UI Route (name: aws-compatible-storage)
+    enabled: true
+    s3Api:
+      # All S3 consumers are in-cluster; keep the S3 API off the public network.
+      enabled: false
+  storage:
+    data:
+      size: 10Gi
 
-    # Upload sample files to the minio bucket
-  sampleFileUpload:
-    enabled: false
-    # bucket: failed_logs
-    # urls:
-    # - https://raw.githubusercontent.com/***
+# Buckets created by the parent chart's bootstrap Job (the aws-compatible-storage
+# subchart does not create buckets). Regular Job, not a post-install hook, so it
+# runs alongside `helm --wait` and unblocks Loki / the RAG init job.
+awsCompatibleStorageBuckets:
+  create: true
+  names:
+    - rag-index         # RAG FAISS index + metadata + LATEST.json
+    - clustering-model  # clustering_model.joblib
+    - loki-chunks       # Loki chunk store
+    - loki-ruler        # Loki ruler store
+    - loki-admin        # Loki admin store (GEL; harmless if unused)
+
+global:
+  # Object storage coordinates, shared with the subcharts that template against them.
+  # Keep in sync with aws-compatible-storage.fullnameOverride above.
+  objectStorage:
+    host: "aws-compatible-storage"
+    apiPort: "7480"
+    uiPort: "5000"
+    secretName: "aws-compatible-storage-credentials"
+
+  # Images used by chart-owned Jobs and init containers. UBI only - never Docker Hub
+  # (rate limits) and never quay.io/minio/mc (often unauthorized).
+  # registry.access.redhat.com is the unauthenticated UBI mirror; registry.redhat.io
+  # would need an imagePullSecret this chart does not configure.
+  jobImages:
+    python: registry.access.redhat.com/ubi9/python-311:latest
+    shell: registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 
 # pgvector:
@@ -354,10 +406,23 @@ loki:
       allow_structured_metadata: true
       volume_enabled: true
     storage:
+      type: s3
       bucketNames:
         chunks: loki-chunks
         ruler: loki-ruler
         admin: loki-admin
+      # Point Loki's chunk/ruler store at aws-compatible-storage (S4) instead of the
+      # MinIO bundled with the Loki chart (loki.minio.enabled is false below).
+      # Ceph RGW requires path-style addressing; plain HTTP in-cluster => insecure: true.
+      # Buckets are created by this chart's bucket bootstrap Job.
+      s3:
+        endpoint: aws-compatible-storage:7480
+        region: us-east-1
+        # Must match aws-compatible-storage.s3.* above.
+        accessKeyId: s4admin
+        secretAccessKey: s4secret
+        s3ForcePathStyle: true
+        insecure: true
     auth_enabled: false
 
   deploymentMode: SingleBinary
@@ -396,8 +461,9 @@ loki:
   bloomGateway:
     replicas: 0
 
+  # Loki's bundled MinIO is replaced by aws-compatible-storage (see loki.storage.s3 above).
   minio:
-    enabled: true
+    enabled: false
   rbac:
     sccEnabled: false
 
@@ -438,8 +504,6 @@ loki:
           name: loki
         - kind: ServiceAccount
           name: loki-canary
-        - kind: ServiceAccount
-          name: minio-sa
       roleRef:
         kind: Role
         name: loki-anyuid-scc

@@ -3,14 +3,14 @@ from pydantic import BaseModel
 import joblib
 import numpy as np
 import os
-from model_loader import load_from_minio
+from model_loader import load_from_s3
 from sklearn.base import BaseEstimator
 
 app = FastAPI()
 # TODO change it for cluster deployment to be model registry.
-if os.getenv("MINIO_BUCKET_NAME"):
-    model: BaseEstimator = load_from_minio(
-        os.getenv("MINIO_BUCKET_NAME"), "clustering_model.joblib"
+if os.getenv("S3_BUCKET_NAME"):
+    model: BaseEstimator = load_from_s3(
+        os.getenv("S3_BUCKET_NAME"), "clustering_model.joblib"
     )
 else:
     model = joblib.load("clustering_model.joblib")
